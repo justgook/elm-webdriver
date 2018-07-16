@@ -1,0 +1,18 @@
+{
+  "name": "elm-webdriver-example",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bundle.js",
+  "private": true,
+  "dependencies": {
+    "w3c-xmlhttprequest": "^2.1.2",
+    "xhr2": "^0.1.4",
+    "xmlhttprequest": "^1.8.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "elm-make Main.elm --output=bundle.js && node -e 'var XMLHttpRequest = require(\"xhr2\"); require(\"./bundle.js\").Main.worker().ports.log.subscribe(console.log)'"
+  },
+  "author": "",
+  "license": "ISC"
+}

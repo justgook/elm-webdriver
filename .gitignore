@@ -1,0 +1,26 @@
+#Logs
+logs
+*.log
+
+
+#Dependencies
+node_modules/
+elm-stuff/
+
+# Yarn Integrity file
+.yarn-integrity
+
+#caches
+.rpt2_cache
+
+#OS stuff
+.DS_Store
+.vscode
+*.iml
+/.idea
+
+#Build
+/dist
+/assets
+/WIP
+bundle.js
