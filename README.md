@@ -30,13 +30,13 @@ To run the example tests in this repo, do the following.
 
 `elm-webdriver` is framework that allows write scripts for `WebDriver` with plain [Node.js](https://nodejs.org/) runner that just executes compiled elm
 
-##Suported Drivers
+## Suported Drivers
 
   - [ChromeDriver](http://chromedriver.chromium.org/)
   - [GeckoDriver](https://github.com/mozilla/geckodriver)
   - [Selenium Standalone Server](https://www.seleniumhq.org/download/)
 
-#Setup
+# Setup
 
 ## Quick Start
 ```elm
@@ -52,7 +52,7 @@ suite =
         ]
 ```
 
-##Running From CLI
+## Running From CLI
 
   >Note: To be able run from node you need install `XMLHttpRequest` replacement (node don't have build in). Install `xhr2` and append it:
 
