@@ -1,10 +1,10 @@
-module WebDriver.LowLevel.Value.Status exposing (..)
+module WebDriver.Internal.Value.Status exposing (Status, decode, encode)
 
-import Json.Encode
 import Json.Decode exposing (field)
+import Json.Encode
 
 
-type alias Value =
+type alias Status =
     { build : ValueBuild
     , os : ValueOs
     }
@@ -22,9 +22,9 @@ type alias ValueOs =
     }
 
 
-decode : Json.Decode.Decoder Value
+decode : Json.Decode.Decoder Status
 decode =
-    Json.Decode.map2 Value
+    Json.Decode.map2 Status
         (field "build" decodeValueBuild)
         (field "os" decodeValueOs)
 
@@ -43,7 +43,7 @@ decodeValueOs =
         (field "version" Json.Decode.string)
 
 
-encode : Value -> Json.Encode.Value
+encode : Status -> Json.Encode.Value
 encode record =
     Json.Encode.object
         [ ( "build", encodeValueBuild <| record.build )

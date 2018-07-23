@@ -1,13 +1,26 @@
-module WebDriver.Internal exposing (Test(..), ErrorLevel(..), duplicatedName, unwrap, failNow, Command(..), Parsed(..))
+module WebDriver.Internal
+    exposing
+        ( Command(..)
+        , ErrorLevel(..)
+        , Expectation(..)
+        , Parsed(..)
+        , Test(..)
+        , duplicatedName
+        , failNow
+        , unwrap
+        )
 
-import Task exposing (Task)
-import WebDriver.LowLevel.Value exposing (Answer)
-import WebDriver.LowLevel.Functions exposing (Functions)
+-- import WebDriver.LowLevel.Value exposing (Answer2)
+
 import Set exposing (Set)
+import Task exposing (Task)
+import WebDriver.LowLevel.Capabilities exposing (Capabilities)
+import WebDriver.Step exposing (Functions)
 
 
 type Test
-    = UnitTest (Functions -> Task ( ErrorLevel, String ) Answer)
+    = UnitTest (Functions -> Task Never Expectation)
+    | Browser (List ( String, Capabilities )) Test
       -- | FuzzTest (Random.Seed -> Int -> List Expectation)
     | Labeled String Test
     | Skipped Test
@@ -19,6 +32,11 @@ type Test
 type ErrorLevel
     = StopOne
     | StopAll
+
+
+type Expectation
+    = Pass
+    | Fail Bool {- Exit -} String
 
 
 failNow : String -> Test
@@ -44,6 +62,9 @@ duplicatedName =
                 ParseError _ ->
                     []
 
+                Browser _ subTest ->
+                    names subTest
+
                 -- FuzzTest _ ->
                 -- []
                 Skipped subTest ->
@@ -62,13 +83,13 @@ duplicatedName =
                         Ok <| Set.insert newName oldNames
                 )
     in
-        List.concatMap names
-            >> List.foldl insertOrFail (Ok Set.empty)
+    List.concatMap names
+        >> List.foldl insertOrFail (Ok Set.empty)
 
 
 type Command
     = TextMe Bool Bool String
-    | DoMe Bool Bool String (Functions -> Task ( ErrorLevel, String ) Answer)
+    | DoMe Bool Bool String (Functions -> Task Never Expectation)
 
 
 type Parsed
@@ -85,47 +106,54 @@ unwrapFold : Bool -> Bool -> Int -> Test -> Parsed -> Parsed
 unwrapFold skiping only offset_ current acc_ =
     let
         offset =
-            (offset_ + 2)
+            offset_ + 2
 
         offsetString =
             String.repeat offset_ " "
     in
-        case ( current, acc_ ) of
-            ( _, Error a ) ->
-                acc_
+    case ( current, acc_ ) of
+        ( _, Error a ) ->
+            acc_
 
-            ( UnitTest test, Success onlyMode acc ) ->
-                DoMe skiping only (offsetString) test :: acc |> Success onlyMode
+        ( Browser caps test, Success onlyMode acc ) ->
+            let
+                _ =
+                    Debug.log "IMPLEMENT ME" "WebDriver.Internal::unwrapFold Browser"
+            in
+            acc_
 
-            ( Labeled string data, Success onlyMode acc ) ->
-                TextMe skiping only (offsetString ++ string)
-                    :: acc
-                    |> Success onlyMode
-                    |> unwrapFold skiping only offset data
+        ( UnitTest test, Success onlyMode acc ) ->
+            DoMe skiping only offsetString test :: acc |> Success onlyMode
 
-            ( ParseError string, Success onlyMode acc ) ->
-                Error string
+        ( Labeled string data, Success onlyMode acc ) ->
+            TextMe skiping only (offsetString ++ string)
+                :: acc
+                |> Success onlyMode
+                |> unwrapFold skiping only offset data
 
-            ( Skipped data, Success onlyMode acc ) ->
-                case (unwrapFold True only offset data (Success onlyMode [])) of
-                    Success onlyMode a ->
-                        a ++ acc |> Success onlyMode
+        ( ParseError string, Success onlyMode acc ) ->
+            Error string
 
-                    Error result ->
-                        Error result
+        ( Skipped data, Success onlyMode acc ) ->
+            case unwrapFold True only offset data (Success onlyMode []) of
+                Success onlyMode a ->
+                    a ++ acc |> Success onlyMode
 
-            ( Only data, Success onlyMode acc ) ->
-                case (unwrapFold skiping True offset data (Success True [])) of
-                    Success onlyMode a ->
-                        a ++ acc |> Success True
+                Error result ->
+                    Error result
 
-                    Error result ->
-                        Error result
+        ( Only data, Success onlyMode acc ) ->
+            case unwrapFold skiping True offset_ data (Success True []) of
+                Success onlyMode a ->
+                    a ++ acc |> Success True
 
-            ( Batch listData, Success onlyMode acc ) ->
-                case listData |> List.foldl (\i acc2 -> unwrapFold skiping only offset_ i acc2) (Success onlyMode []) of
-                    Success onlyMode a ->
-                        a ++ acc |> Success onlyMode
+                Error result ->
+                    Error result
 
-                    Error result ->
-                        Error result
+        ( Batch listData, Success onlyMode acc ) ->
+            case listData |> List.foldl (\i acc2 -> unwrapFold skiping only offset_ i acc2) (Success onlyMode []) of
+                Success onlyMode a ->
+                    a ++ acc |> Success onlyMode
+
+                Error result ->
+                    Error result

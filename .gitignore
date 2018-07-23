@@ -1,7 +1,7 @@
 #Logs
 logs
 *.log
-
+documentation.json
 
 #Dependencies
 node_modules/
@@ -22,5 +22,4 @@ elm-stuff/
 #Build
 /dist
 /assets
-/WIP
 bundle.js

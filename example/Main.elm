@@ -1,11 +1,13 @@
 module Main exposing (..)
 
 import Task
-import WebDriver.LowLevel.Value as WebDriver
-import WebDriver.Test as WebDriver exposing (describe, test, skip, only)
+import WebDriver.Element as Selector
+import WebDriver.Expect as Expect
 import WebDriver.Runner as Runner exposing (run)
+import WebDriver.Test as WebDriver exposing (describe, only, skip, test)
 
 
+main : Runner.TestRunner
 main =
     run suite
 
@@ -14,46 +16,60 @@ suite : WebDriver.Test
 suite =
     describe "WebDriver"
         [ describe "LowLevel"
-            [ only <|
-                describe "Functions"
-                    [ test "url / getUrl" <|
-                        \{ url, getUrl, continue, fail } ->
-                            url "https://github.com"
-                                |> Task.andThen (\_ -> getUrl)
-                                |> Task.andThen
-                                    (\data ->
-                                        case data.value of
-                                            WebDriver.GetUrl string ->
-                                                if string == "https://github.com/" then
-                                                    continue data
-                                                else
-                                                    "Wrong Url - expected \"https://github.com\" but got "
-                                                        ++ string
-                                                        |> fail
-
-                                            _ ->
-                                                fail "Wrong Url"
-                                    )
-
-                    -- , test "Level5-test" <|
-                    --     \{ url } ->
-                    --         url "https://github.com"
-                    --             -- |> Task.andThen (\data -> Task.fail "3")
-                    --             |> Task.andThen (\_ -> url "https://github.com/justgook")
-                    --             |> Task.andThen (\_ -> url "https://github.com/justgook/elm-tiled-decode")
-                    ]
-            , describe "Level6"
-                [ test "Level7-test" <|
-                    \{ url } ->
-                        url "https://github.com"
-                            -- |> Task.andThen (\data -> Task.fail "3")
-                            |> Task.andThen (\_ -> url "https://github.com/justgook")
-                            |> Task.andThen (\_ -> url "https://github.com/justgook/elm-tiled-decode")
+            [ describe "Functions"
+                [ test "url / refresh / getUrl" <|
+                    \{ url, getUrl, refresh } ->
+                        url blankPage
+                            |> Task.andThen (\_ -> refresh)
+                            |> Task.andThen (\_ -> getUrl)
+                            |> Task.andThen
+                                (\({ value } as data) ->
+                                    Expect.equal value blankPage
+                                )
+                , test "url / back / forward / getUrl" <|
+                    \{ url, getUrl, back, forward } ->
+                        url blankPage
+                            |> Task.andThen (\_ -> back)
+                            |> Task.andThen (\_ -> forward)
+                            |> Task.andThen (\_ -> getUrl)
+                            |> Task.andThen
+                                (\({ value } as data) ->
+                                    Expect.equal value blankPage
+                                )
+                , test "url / title" <|
+                    \{ url, title } ->
+                        url tiltlePage
+                            |> Task.andThen (\_ -> title)
+                            |> Task.andThen
+                                (\({ value } as data) ->
+                                    String.contains "Hello" value
+                                        |> Expect.true ("Expected the title contains text Hello, but it is `" ++ value ++ "`")
+                                )
                 ]
             ]
-        , describe "only-describe"
-            [ test "OnlyTest" <| \{ url } -> url "https://github.com"
-            , test "OnlyTest2" <| \{ url } -> url "https://github.com"
+        , describe "Mock Html page"
+            [ test "elment testing" <|
+                \{ url, element, text } ->
+                    url mock
+                        |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
+                        |> Task.andThen (.value >> text)
+                        |> Task.andThen (.value >> Expect.equal "Hello World")
             ]
-        , skip <| test "Last for skip" <| \{ url } -> url "https://github.com"
         ]
+
+
+blankPage : String
+blankPage =
+    "data:text/plain,Hello"
+
+
+tiltlePage : String
+tiltlePage =
+    """data:text/html,<title>Hello World</title>"""
+
+
+mock : String
+mock =
+    """data:text/html,
+    <h1>Hello World</h1>
+"""

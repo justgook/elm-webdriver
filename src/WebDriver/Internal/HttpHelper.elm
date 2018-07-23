@@ -1,4 +1,4 @@
-module WebDriver.LowLevel.HttpHelper exposing (delete, stringifyError, toTask)
+module WebDriver.Internal.HttpHelper exposing (delete, stringifyError, toTask)
 
 import Http
 import Json.Decode exposing (Decoder)

@@ -1,37 +1,58 @@
-port module WebDriver.Loging exposing (log, success, info, error, skip, skipBadge, successBadge)
+port module WebDriver.Loging exposing (error, info, log, skip, skipBadge, success, successBadge)
 
 
 port log : String -> Cmd msg
 
 
+
+-- http://ascii-table.com/ansi-escape-sequences.php
+
+
+cHECK_MARK =
+    "\\033[0;32m\\xE2\\x9C\\x94\\033[0m"
+
+
+
+-- CHECK_MARK="\033[0;32m\xE2\x9C\x94\033[0m"
+-- to clear from the cursor position to the beginning of the line:
+-- echo -e "\033[1K"
+-- Or everything on the line, regardless of cursor position:
+-- echo -e "\033[2K"
+
+
 success : String -> Cmd msg
 success s =
-    log (colors.fg.green ++ s ++ colors.reset)
+    log (colors.fg.green ++ s ++ colors.reset ++ "\n")
 
 
 info : String -> Cmd msg
 info s =
-    log (colors.fg.cyan ++ s ++ colors.reset)
+    log (colors.fg.cyan ++ s ++ colors.reset ++ "\n")
 
 
 error : String -> Cmd msg
 error s =
-    log (colors.fg.red ++ s ++ colors.reset)
+    log (colors.fg.red ++ "✕" ++ s ++ colors.reset ++ "\n")
 
 
 skip : String -> Cmd msg
 skip s =
-    log (colors.fg.yellow ++ s ++ colors.reset)
+    log (colors.fg.yellow ++ "○" ++ s ++ colors.reset ++ "\n")
 
 
 skipBadge : String -> Cmd msg
 skipBadge offset =
-    log (offset ++ colors.bg.green ++ colors.fg.black ++ "Skip" ++ colors.reset)
+    log (colors.fg.yellow ++ "○" ++ offset ++ colors.bg.green ++ colors.fg.black ++ "Skip" ++ colors.reset ++ "\n")
 
 
 successBadge : String -> Cmd msg
 successBadge offset =
-    log (offset ++ colors.fg.green ++ colors.bright ++ "Suuccess" ++ colors.reset)
+    log (colors.fg.green ++ "✓" ++ offset ++ colors.bright ++ "Pass" ++ colors.reset ++ "\n")
+
+
+
+-- https://gist.github.com/KenanSulayman/4990953
+-- process.stdout.write('\033c\033[3J');
 
 
 colors : Colors

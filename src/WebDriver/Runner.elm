@@ -1,43 +1,59 @@
-module WebDriver.Runner exposing (run, runWith, configuration)
+module WebDriver.Runner exposing (Configuration, TestRunner, configuration, run, runWith)
 
-import Task exposing (Task)
-import WebDriver.Internal exposing (Test(..), Command(..), Parsed(..), unwrap)
-import Platform exposing (programWithFlags)
+{-|
+
+@docs run, runWith, configuration, TestRunner, Configuration
+
+-}
+
 import Json.Decode as Json
-import WebDriver.Loging as Log
-import WebDriver.LowLevel as WebDriver exposing (Expectation(..))
-import WebDriver.LowLevel.Functions as WebDriver exposing (Functions)
 import Json.Encode
+import Platform exposing (programWithFlags)
+import Task exposing (Task)
+import WebDriver.Internal as Internal exposing (Command(..), Expectation(..), Parsed(..), unwrap)
+import WebDriver.Internal.Browser as WebDriver exposing (browser)
+import WebDriver.Loging as Log
+import WebDriver.LowLevel.Capabilities as Capabilities exposing (Capabilities)
+import WebDriver.Step as WebDriver exposing (Functions)
+import WebDriver.Test exposing (Test)
 
 
--- type alias Program =
---     Platform.Program Json.Value Model Message
+{-| -}
+type alias TestRunner =
+    Application
 
 
+type alias Application =
+    Platform.Program Json.Value Model Message
+
+
+{-| A function which, run tests with fallback [`configuration`](#configuration),
+if flags no are defined (to define own use [`runWith`](#runWith) or define with flags)
+-}
+run : Test -> TestRunner
 run suite =
     runWith configuration suite
 
 
+{-| -}
 type alias Configuration =
     { dirverHost : String
-    , capabilities : Json.Value
+    , capabilities : Capabilities
     }
 
 
+{-| Default configuration that is used in [`run`](#run)
+-}
 configuration : Configuration
 configuration =
-    -- { dirverHost = "http://localhost:4444/wd/hub"
     { dirverHost = "http://localhost:9515"
-    , capabilities =
-        Json.Encode.object
-            [ ( "desiredCapabilities"
-              , Json.Encode.object
-                    [ ( "browserName", Json.Encode.string "firefox" ) ]
-              )
-            ]
+    , capabilities = Capabilities.default
     }
 
 
+{-| Same as [`run`](#run), only allows You define Your own fallbacks
+-}
+runWith : Configuration -> Test -> TestRunner
 runWith configs suite =
     programWithFlags
         { init = init configs suite
@@ -65,20 +81,25 @@ update msg model =
             ( model, Log.error err )
 
         TestFail False err ->
-            ( model, Log.error err )
+            let
+                ( newCommands, newCmds ) =
+                    model.commands |> doCommands model.onlyMode model.configuration
+            in
+            ( { model | commands = newCommands }, Cmd.batch [ newCmds, Log.error err ] )
 
         TestSuccess spaces ->
             let
                 ( newCommands, newCmds ) =
                     model.commands |> doCommands model.onlyMode model.configuration
             in
-                ( { model | commands = newCommands }, Cmd.batch [ newCmds, Log.successBadge spaces ] )
+            ( { model | commands = newCommands }, Cmd.batch [ newCmds, Log.successBadge spaces ] )
 
 
+init : Configuration -> Test -> Json.Value -> ( { commands : List Command, configuration : Configuration, onlyMode : Bool }, Cmd Message )
 init configs suite flags =
     let
         configuration =
-            configurationDecoder configs flags
+            configurationInit configs flags
 
         model =
             { configuration = configuration
@@ -86,23 +107,23 @@ init configs suite flags =
             , onlyMode = False
             }
     in
-        case unwrap suite of
-            Success onlyMode commands_ ->
-                let
-                    ( commands, cmds ) =
-                        List.reverse commands_ |> doCommands onlyMode configuration
-                in
-                    ( { model
-                        | commands = commands
-                        , onlyMode = onlyMode
-                      }
-                    , cmds
-                    )
+    case unwrap suite of
+        Success onlyMode commands_ ->
+            let
+                ( commands, cmds ) =
+                    List.reverse commands_ |> doCommands onlyMode configuration
+            in
+            ( { model
+                | commands = commands
+                , onlyMode = onlyMode
+              }
+            , cmds
+            )
 
-            Error s ->
-                ( model
-                , Log.error s
-                )
+        Error s ->
+            ( model
+            , Log.error s
+            )
 
 
 addCmd : Cmd msg -> ( model, Cmd msg ) -> ( model, Cmd msg )
@@ -139,43 +160,41 @@ doCommands_ onlyMode config commands acc =
             if skip || onlyMode && not only then
                 acc |> addCmd (Log.skipBadge spaces)
             else
-                acc |> addCmd (Log.success spaces)
+                executeDoMe config spaces test acc
 
         (DoMe skip only spaces test) :: rest ->
-            (if skip || onlyMode && not only then
+            if skip || onlyMode && not only then
                 acc |> addCmd (Log.skipBadge spaces) |> doCommands_ onlyMode config rest
-             else
-                let
-                    cmd =
-                        runOne config.dirverHost config.capabilities test
-                            |> Task.perform (msgFromExpectation (TestSuccess spaces) (TestFail False) (TestFail True))
-                in
-                    -- acc |> addCmd (Log.success (spaces ++ "Here goes test"))
-                    acc |> addCmd cmd |> Tuple.mapFirst (always rest)
-            )
+            else
+                executeDoMe config spaces test acc
+                    |> Tuple.mapFirst (always rest)
 
 
-configurationDecoder : Configuration -> Json.Value -> Configuration
-configurationDecoder configs flags =
+executeDoMe : Configuration -> String -> (Functions -> Task Never Expectation) -> ( model, Cmd Message ) -> ( model, Cmd Message )
+executeDoMe config spaces test acc =
     let
-        url =
+        failparser err =
+            err
+                |> String.split "\n"
+                |> String.join ("\n" ++ spaces)
+                |> (++) spaces
+
+        cmd =
+            runOne config.dirverHost (Capabilities.encode config.capabilities) test
+                |> Task.perform (msgFromExpectation (TestSuccess spaces) (failparser >> TestFail False) (TestFail True))
+    in
+    acc |> addCmd cmd
+
+
+configurationInit : Configuration -> Json.Value -> Configuration
+configurationInit configs flags =
+    let
+        dirverHost =
             flags
                 |> Json.decodeValue (Json.field "webdriverUrl" Json.string)
-                |> Result.withDefault "http://localhost:9515"
-
-        -- sessionId =
-        --     flags
-        --         |> Json.decodeValue (Json.field "sessionId" Json.string)
-        --         |> Result.withDefault ""
+                |> Result.withDefault configs.dirverHost
     in
-        configs
-
-
-
--- send : msg -> Cmd msg
--- send msg =
---     Task.succeed msg
---         |> Task.perform identity
+    { configs | dirverHost = dirverHost }
 
 
 msgFromExpectation : a -> (String -> a) -> (String -> a) -> Expectation -> a
@@ -191,22 +210,6 @@ msgFromExpectation msg1 msg2 msg3 result =
             msg3 string
 
 
-runOne : String -> Json.Value -> (Functions -> Task ( a1, String ) a) -> Task Never Expectation
+runOne : String -> Json.Encode.Value -> (Functions -> Task Never Expectation) -> Task Never Expectation
 runOne driverUrl capabilities test =
-    WebDriver.browser driverUrl capabilities (\f -> test f |> Task.mapError Tuple.second)
-
-
-
--- runTestSequence : String -> List (Functions -> Task String a) -> Task Never Expectation
--- runTestSequence driverUrl tests =
---     (List.foldl
---         (\t acc ->
---             acc
---                 |> Task.andThen (\_ -> WebDriver.browser driverUrl t)
---         )
---         (Task.succeed Pass)
---         tests
---     )
--- runparallel : String -> (Expectation -> msg) -> b -> Cmd msg
--- runparallel driverUrl msg tests =
---     (Task.succeed Pass) |> Task.perform msg
+    WebDriver.browser driverUrl capabilities test
