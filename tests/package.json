@@ -5,9 +5,7 @@
   "main": "bundle.js",
   "private": true,
   "dependencies": {
-    "w3c-xmlhttprequest": "^2.1.2",
-    "xhr2": "^0.1.4",
-    "xmlhttprequest": "^1.8.0"
+    "xhr2": "0.1.4"
   },
   "devDependencies": {},
   "scripts": {
