@@ -1,8 +1,8 @@
-module WebDriver.Test exposing (Test, describe, only, skip, test)
+module WebDriver.Test exposing (Test, concat, describe, only, skip, test)
 
 {-|
 
-@docs Test,test, describe, skip, only
+@docs Test,test, describe, skip, only, concat
 
 -}
 
@@ -20,6 +20,25 @@ See [`test`](#test) for some ways to create a `Test`.
 -}
 type alias Test =
     Internal.Test
+
+
+{-| Run each of the given tests.
+
+    concat [ testDecoder, testSorting ]
+
+-}
+concat : List Test -> Test
+concat tests =
+    if List.isEmpty tests then
+        Internal.failNow "This `concat` has no tests in it. Let's give it some!"
+    else
+        case Internal.duplicatedName tests of
+            Err duped ->
+                Internal.failNow
+                    ("A test group contains multiple tests named '" ++ duped ++ "'. Do some renaming so that tests have unique names.")
+
+            Ok _ ->
+                Internal.Batch tests
 
 
 {-| Returns a [`Test`](#Test) that causes other tests to be skipped, and only runs the given one.
@@ -105,7 +124,7 @@ test untrimmedDesc thunk =
     thunk
         >> Task.andThen (\_ -> Task.succeed Internal.Pass)
         >> Task.onError (Internal.Fail False >> Task.succeed)
-        |> Internal.UnitTest
+        |> (\test -> Internal.UnitTest test)
         |> Internal.Labeled desc
 
 

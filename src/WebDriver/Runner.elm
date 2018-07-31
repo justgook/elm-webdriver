@@ -6,13 +6,16 @@ module WebDriver.Runner exposing (Configuration, TestRunner, configuration, run,
 
 -}
 
+import Array exposing (Array)
+import Dict exposing (Dict)
 import Json.Decode as Json
 import Json.Encode
+import NestedSet exposing (NestedSet)
 import Platform exposing (programWithFlags)
 import Task exposing (Task)
-import WebDriver.Internal as Internal exposing (Command(..), Expectation(..), Parsed(..), unwrap)
+import WebDriver.Internal as Internal exposing (Expectation(..), Node(..), Parsed(..), Queue(Queue), TestStatus(..), unwrap)
 import WebDriver.Internal.Browser as WebDriver exposing (browser)
-import WebDriver.Loging as Log
+import WebDriver.Internal.Render exposing (render)
 import WebDriver.LowLevel.Capabilities as Capabilities exposing (Capabilities)
 import WebDriver.Step as WebDriver exposing (Functions)
 import WebDriver.Test exposing (Test)
@@ -38,7 +41,7 @@ run suite =
 {-| -}
 type alias Configuration =
     { dirverHost : String
-    , capabilities : Capabilities
+    , capabilities : Json.Value
     }
 
 
@@ -46,14 +49,14 @@ type alias Configuration =
 -}
 configuration : Configuration
 configuration =
-    { dirverHost = "http://localhost:9515"
-    , capabilities = Capabilities.default
+    { dirverHost = "http://localhost:4444/wd/hub"
+    , capabilities = Capabilities.encode Capabilities.default
     }
 
 
-{-| Same as [`run`](#run), only allows You define Your own fallbacks
+{-| Same as [`run`](#run), only allows You define Your own capabilities as raw `Json.Value`
 -}
-runWith : Configuration -> Test -> TestRunner
+runWith : Configuration -> Test -> Application
 runWith configs suite =
     programWithFlags
         { init = init configs suite
@@ -64,126 +67,90 @@ runWith configs suite =
 
 type alias Model =
     { configuration : Configuration
-    , commands : List Command
+    , data : NestedSet Node
     , onlyMode : Bool
+    , queues : Array Queue
     }
 
 
 type Message
-    = TestSuccess String
-    | TestFail Bool String
+    = TestResult { testId : Int, queueId : Int } Expectation
+
+
+type alias TestCoordinate =
+    { testId : Int, queueId : Int }
 
 
 update : Message -> Model -> ( Model, Cmd Message )
-update msg model =
-    case msg of
-        TestFail True err ->
-            ( model, Log.error err )
+update (TestResult { testId, queueId } result) model =
+    let
+        newModel =
+            { model | data = NestedSet.update testId (itemStatusDone queueId result) model.data }
 
-        TestFail False err ->
+        cmd =
+            render newModel
+    in
+    case result of
+        Fail True err ->
+            ( newModel, cmd )
+
+        _ ->
             let
-                ( newCommands, newCmds ) =
-                    model.commands |> doCommands model.onlyMode model.configuration
+                cmd2 =
+                    nextTest queueId newModel.queues newModel.data
+                        |> Maybe.map
+                            (\{ caps, test, nextId } ->
+                                runOne caps.dirverHost caps.capabilities test
+                                    |> Task.perform (TestResult { testId = nextId, queueId = queueId })
+                            )
+                        |> Maybe.withDefault Cmd.none
             in
-            ( { model | commands = newCommands }, Cmd.batch [ newCmds, Log.error err ] )
-
-        TestSuccess spaces ->
-            let
-                ( newCommands, newCmds ) =
-                    model.commands |> doCommands model.onlyMode model.configuration
-            in
-            ( { model | commands = newCommands }, Cmd.batch [ newCmds, Log.successBadge spaces ] )
+            ( newModel, Cmd.batch [ cmd, cmd2 ] )
 
 
-init : Configuration -> Test -> Json.Value -> ( { commands : List Command, configuration : Configuration, onlyMode : Bool }, Cmd Message )
+init : Configuration -> Test -> Json.Value -> ( Model, Cmd Message )
 init configs suite flags =
     let
-        configuration =
+        ({ capabilities } as configuration) =
             configurationInit configs flags
 
         model =
             { configuration = configuration
-            , commands = []
+            , data = NestedSet.empty
             , onlyMode = False
+            , queues = Array.empty
+            }
+
+        browserData =
+            { name = "Chrome"
+            , instances = 8
+            , capabilities = capabilities
+            , dirverHost = configs.dirverHost
             }
     in
-    case unwrap suite of
-        Success onlyMode commands_ ->
+    case unwrap [ browserData ] suite of
+        Success { onlyMode, data, queues } ->
             let
-                ( commands, cmds ) =
-                    List.reverse commands_ |> doCommands onlyMode configuration
+                initialModel =
+                    { model
+                        | data = data
+                        , queues = queues
+                        , onlyMode = onlyMode
+                    }
+
+                ( cmds2, newData ) =
+                    initRun initialModel
+
+                resultModel =
+                    { initialModel | data = newData }
+
+                cmd =
+                    render resultModel
             in
-            ( { model
-                | commands = commands
-                , onlyMode = onlyMode
-              }
-            , cmds
-            )
+            ( resultModel, [ cmd ] ++ cmds2 |> Cmd.batch )
 
         Error s ->
-            ( model
-            , Log.error s
-            )
-
-
-addCmd : Cmd msg -> ( model, Cmd msg ) -> ( model, Cmd msg )
-addCmd cmd ( model, oldCmd ) =
-    ( model, Cmd.batch [ cmd, oldCmd ] )
-
-
-doCommands : Bool -> Configuration -> List Command -> ( List Command, Cmd Message )
-doCommands onlyMode config commands =
-    doCommands_ onlyMode config commands ( [], Cmd.none )
-
-
-doCommands_ : Bool -> Configuration -> List Command -> ( List Command, Cmd Message ) -> ( List Command, Cmd Message )
-doCommands_ onlyMode config commands acc =
-    case commands of
-        [] ->
-            acc
-
-        (TextMe skip only value) :: [] ->
-            if skip || onlyMode && not only then
-                acc |> addCmd (Log.skip value)
-            else
-                acc |> addCmd (Log.info value)
-
-        (TextMe skip only value) :: rest ->
-            (if skip || onlyMode && not only then
-                acc |> addCmd (Log.skip value)
-             else
-                acc |> addCmd (Log.info value)
-            )
-                |> doCommands_ onlyMode config rest
-
-        (DoMe skip only spaces test) :: [] ->
-            if skip || onlyMode && not only then
-                acc |> addCmd (Log.skipBadge spaces)
-            else
-                executeDoMe config spaces test acc
-
-        (DoMe skip only spaces test) :: rest ->
-            if skip || onlyMode && not only then
-                acc |> addCmd (Log.skipBadge spaces) |> doCommands_ onlyMode config rest
-            else
-                executeDoMe config spaces test acc
-                    |> Tuple.mapFirst (always rest)
-
-
-executeDoMe : Configuration -> String -> (Functions -> Task Never Expectation) -> ( model, Cmd Message ) -> ( model, Cmd Message )
-executeDoMe config spaces test acc =
-    let
-        failparser err =
-            err
-                |> String.split "\n"
-                |> String.join ("\n" ++ spaces)
-                |> (++) spaces
-
-        cmd =
-            runOne config.dirverHost (Capabilities.encode config.capabilities) test
-                |> Task.perform (msgFromExpectation (TestSuccess spaces) (failparser >> TestFail False) (TestFail True))
-    in
-    acc |> addCmd cmd
+            ( model, Cmd.none )
 
 
 configurationInit : Configuration -> Json.Value -> Configuration
@@ -197,17 +164,164 @@ configurationInit configs flags =
     { configs | dirverHost = dirverHost }
 
 
-msgFromExpectation : a -> (String -> a) -> (String -> a) -> Expectation -> a
-msgFromExpectation msg1 msg2 msg3 result =
-    case result of
-        Pass ->
-            msg1
+initRun : { b | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> ( List (Cmd Message), NestedSet Node )
+initRun { data, queues, onlyMode } =
+    queues
+        |> Array.toIndexedList
+        |> List.foldl
+            (\( queueId, Queue ( caps, ids ) ) ( acc, model ) ->
+                let
+                    modelWithQueue =
+                        List.foldl
+                            (\id acc2 ->
+                                NestedSet.update id (itemStatusInQueue queueId) acc2
+                            )
+                            model
+                            ids
 
-        Fail {- Exit -} False string ->
-            msg2 string
+                    ( newCmds, finalModel ) =
+                        List.take caps.instances ids
+                            |> List.foldl
+                                (\testId ( tasks, modelWithRunning ) ->
+                                    case NestedSet.get testId data of
+                                        Just (Test { test, only, skip }) ->
+                                            if skip then
+                                                ( tasks, NestedSet.update testId (itemStatusSkip queueId) modelWithRunning )
+                                            else if onlyMode && not only then
+                                                ( tasks, NestedSet.update testId (itemStatusOnlyModeSkip queueId) modelWithRunning )
+                                            else
+                                                ( (runOne caps.dirverHost caps.capabilities test
+                                                    |> Task.perform (TestResult { testId = testId, queueId = queueId })
+                                                  )
+                                                    :: tasks
+                                                , NestedSet.update testId (itemStatusRunning queueId) modelWithRunning
+                                                )
 
-        Fail {- Exit -} True string ->
-            msg3 string
+                                        _ ->
+                                            -- It should never happent - but have no clue how to make it type safe
+                                            ( tasks, modelWithRunning )
+                                )
+                                ( [], modelWithQueue )
+                in
+                ( acc ++ newCmds, finalModel )
+            )
+            ( [], data )
+
+
+itemStatusUpdater : ({ only : Bool, skip : Bool, test : Functions -> Task Never Expectation, status : Dict Int TestStatus } -> { only : Bool, skip : Bool, status : Dict Int TestStatus, test : Functions -> Task Never Expectation }) -> Node -> Node
+itemStatusUpdater updater item =
+    case item of
+        Test data ->
+            Test (updater data)
+
+        Text a b c ->
+            Text a b c
+
+
+itemStatusUpdater2 : TestStatus -> Int -> Node -> Node
+itemStatusUpdater2 status queueId item =
+    case item of
+        Test data ->
+            Test ((\a -> { a | status = Dict.update queueId (always (Just status)) a.status }) data)
+
+        Text a b c ->
+            Text a b c
+
+
+itemStatusInQueue : Int -> Node -> Node
+itemStatusInQueue queueId =
+    itemStatusUpdater
+        (\({ status, skip } as item) ->
+            { item
+                | status =
+                    Dict.update queueId
+                        (always
+                            (if skip then
+                                Just Skip
+                             else
+                                Just InQueue
+                            )
+                        )
+                        status
+            }
+        )
+
+
+itemStatusRunning : Int -> Node -> Node
+itemStatusRunning =
+    itemStatusUpdater2 Running
+
+
+itemStatusSkip : Int -> Node -> Node
+itemStatusSkip =
+    itemStatusUpdater2 Skip
+
+
+itemStatusOnlyModeSkip : Int -> Node -> Node
+itemStatusOnlyModeSkip =
+    itemStatusUpdater2 OnlyModeSkip
+
+
+itemStatusDone : Int -> Expectation -> Node -> Node
+itemStatusDone queueId result =
+    itemStatusUpdater
+        (\a ->
+            { a
+                | status =
+                    Dict.update queueId (always (Just (Done result))) a.status
+            }
+        )
+
+
+addCmd : Cmd msg -> ( model, Cmd msg ) -> ( model, Cmd msg )
+addCmd cmd ( model, oldCmd ) =
+    ( model, Cmd.batch [ cmd, oldCmd ] )
+
+
+nextTest : Int -> Array Queue -> NestedSet Node -> Maybe { caps : Internal.BrowserData, test : Functions -> Task Never Expectation, nextId : Int }
+nextTest queueId queues data =
+    let
+        returnIf a b =
+            if b then
+                Just a
+            else
+                Nothing
+
+        validateId browserData id =
+            NestedSet.get id data
+                |> Maybe.andThen
+                    (\item ->
+                        case item of
+                            Test { status, test } ->
+                                Dict.get queueId status
+                                    |> Maybe.andThen ((==) InQueue >> returnIf { caps = browserData, test = test, nextId = id })
+
+                            _ ->
+                                Nothing
+                    )
+
+        searchForNext browserData ids =
+            case ids of
+                [] ->
+                    Nothing
+
+                id :: [] ->
+                    validateId browserData id
+
+                id :: rest ->
+                    case validateId browserData id of
+                        Nothing ->
+                            searchForNext browserData rest
+
+                        result ->
+                            result
+    in
+    case Array.get queueId queues of
+        Just (Queue ( browserData, ids )) ->
+            searchForNext browserData ids
+
+        Nothing ->
+            Nothing
 
 
 runOne : String -> Json.Encode.Value -> (Functions -> Task Never Expectation) -> Task Never Expectation

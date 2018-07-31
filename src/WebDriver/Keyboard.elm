@@ -9,7 +9,60 @@ module WebDriver.Keyboard exposing (key)
 
 {-| [`WebDriver documetation`](https://w3c.github.io/webdriver/#keyboard-actions).
 -}
-key : { alt : Char, alt2 : Char, arrowDown : Char, arrowDown2 : Char, arrowLeft : Char, arrowLeft2 : Char, arrowRight : Char, arrowRight2 : Char, arrowUp : Char, arrowUp2 : Char, backspace : Char, cancel : Char, clear : Char, control : Char, control2 : Char, delete : Char, delete2 : Char, end : Char, end2 : Char, enter : Char, escape : Char, f1 : Char, f10 : Char, f11 : Char, f12 : Char, f2 : Char, f3 : Char, f4 : Char, f5 : Char, f6 : Char, f7 : Char, f8 : Char, f9 : Char, help : Char, home : Char, home2 : Char, insert : Char, insert2 : Char, meta : Char, meta2 : Char, pageDown : Char, pageDown2 : Char, pageUp : Char, pageUp2 : Char, pause : Char, return : Char, shift : Char, shift2 : Char, space : Char, tab : Char, unidentified : Char, zenkakuHankaku : Char }
+key :
+    { alt : Char
+    , alt2 : Char
+    , arrowDown : Char
+    , arrowDown2 : Char
+    , arrowLeft : Char
+    , arrowLeft2 : Char
+    , arrowRight : Char
+    , arrowRight2 : Char
+    , arrowUp : Char
+    , arrowUp2 : Char
+    , backspace : Char
+    , cancel : Char
+    , clear : Char
+    , control : Char
+    , control2 : Char
+    , delete : Char
+    , delete2 : Char
+    , end : Char
+    , end2 : Char
+    , enter : Char
+    , escape : Char
+    , f1 : Char
+    , f10 : Char
+    , f11 : Char
+    , f12 : Char
+    , f2 : Char
+    , f3 : Char
+    , f4 : Char
+    , f5 : Char
+    , f6 : Char
+    , f7 : Char
+    , f8 : Char
+    , f9 : Char
+    , help : Char
+    , home : Char
+    , home2 : Char
+    , insert : Char
+    , insert2 : Char
+    , meta : Char
+    , meta2 : Char
+    , pageDown : Char
+    , pageDown2 : Char
+    , pageUp : Char
+    , pageUp2 : Char
+    , pause : Char
+    , return : Char
+    , shift : Char
+    , shift2 : Char
+    , space : Char
+    , tab : Char
+    , unidentified : Char
+    , zenkakuHankaku : Char
+    }
 key =
     { unidentified = '\xE000'
     , cancel = '\xE001'

@@ -1,32 +1,40 @@
 module WebDriver.Internal
     exposing
-        ( Command(..)
+        ( BrowserData
         , ErrorLevel(..)
         , Expectation(..)
+        , Node(..)
         , Parsed(..)
+        , Queue(..)
         , Test(..)
+        , TestStatus(..)
         , duplicatedName
         , failNow
         , unwrap
         )
 
--- import WebDriver.LowLevel.Value exposing (Answer2)
-
+import Array exposing (Array)
+import Dict exposing (Dict)
+import Json.Encode as Json
+import NestedSet exposing (NestedSet)
 import Set exposing (Set)
 import Task exposing (Task)
-import WebDriver.LowLevel.Capabilities exposing (Capabilities)
 import WebDriver.Step exposing (Functions)
 
 
 type Test
     = UnitTest (Functions -> Task Never Expectation)
-    | Browser (List ( String, Capabilities )) Test
+    | Browser (List BrowserData) Test
       -- | FuzzTest (Random.Seed -> Int -> List Expectation)
     | Labeled String Test
     | Skipped Test
     | Only Test
     | Batch (List Test)
     | ParseError String
+
+
+type alias BrowserData =
+    { name : String, instances : Int, dirverHost : String, capabilities : Json.Value }
 
 
 type ErrorLevel
@@ -87,73 +95,121 @@ duplicatedName =
         >> List.foldl insertOrFail (Ok Set.empty)
 
 
-type Command
-    = TextMe Bool Bool String
-    | DoMe Bool Bool String (Functions -> Task Never Expectation)
-
-
 type Parsed
-    = Success Bool (List Command)
+    = Success { onlyMode : Bool, data : NestedSet Node, queues : Array Queue }
     | Error String
 
 
-unwrap : Test -> Parsed
-unwrap current =
-    unwrapFold False False 0 current (Success False [])
+type Node
+    = Text Bool Bool String
+    | Test
+        { skip : Bool
+        , only : Bool
+        , test : Functions -> Task Never Expectation
+        , status : Dict Int TestStatus
+        }
 
 
-unwrapFold : Bool -> Bool -> Int -> Test -> Parsed -> Parsed
-unwrapFold skiping only offset_ current acc_ =
+type TestStatus
+    = Done Expectation
+    | Skip
+    | InQueue
+    | Running
+    | OnlyModeSkip
+
+
+type Queue
+    = Queue ( BrowserData, List Int )
+
+
+unwrap : List BrowserData -> Test -> Parsed
+unwrap capabilities current =
     let
-        offset =
-            offset_ + 2
+        configs =
+            { capabilities = capabilities
+            , skip = False
+            , only = False
+            }
 
-        offsetString =
-            String.repeat offset_ " "
+        model =
+            ( [], Success { onlyMode = False, data = NestedSet.empty, queues = Array.empty } )
     in
-    case ( current, acc_ ) of
-        ( _, Error a ) ->
-            acc_
-
-        ( Browser caps test, Success onlyMode acc ) ->
+    case unwrapFold current -1 configs model of
+        ( queue, Success result ) ->
             let
-                _ =
-                    Debug.log "IMPLEMENT ME" "WebDriver.Internal::unwrapFold Browser"
+                newQueues =
+                    List.map (\caps -> Queue ( caps, queue )) capabilities
+                        |> Array.fromList
+                        |> Array.append result.queues
             in
-            acc_
+            Success { result | queues = newQueues }
 
-        ( UnitTest test, Success onlyMode acc ) ->
-            DoMe skiping only offsetString test :: acc |> Success onlyMode
+        ( _, Error err ) ->
+            Error err
 
-        ( Labeled string data, Success onlyMode acc ) ->
-            TextMe skiping only (offsetString ++ string)
-                :: acc
-                |> Success onlyMode
-                |> unwrapFold skiping only offset data
 
-        ( ParseError string, Success onlyMode acc ) ->
-            Error string
+unwrapFold : Test -> Int -> { a | only : Bool, skip : Bool } -> ( List Int, Parsed ) -> ( List Int, Parsed )
+unwrapFold branch parentId ({ skip, only } as configs) ( queue, acc ) =
+    case ( branch, acc ) of
+        ( _, Error a ) ->
+            ( queue, acc )
 
-        ( Skipped data, Success onlyMode acc ) ->
-            case unwrapFold True only offset data (Success onlyMode []) of
-                Success onlyMode a ->
-                    a ++ acc |> Success onlyMode
+        ( UnitTest test, Success ({ data } as model) ) ->
+            let
+                item =
+                    Test
+                        { skip = skip
+                        , only = only
+                        , test = test
+                        , status = Dict.empty
+                        }
 
-                Error result ->
-                    Error result
+                itemId =
+                    NestedSet.length data
 
-        ( Only data, Success onlyMode acc ) ->
-            case unwrapFold skiping True offset_ data (Success True []) of
-                Success onlyMode a ->
-                    a ++ acc |> Success True
+                newData =
+                    NestedSet.insert parentId item data
+            in
+            ( queue ++ [ itemId ]
+            , Success { model | data = NestedSet.insert parentId item data }
+            )
 
-                Error result ->
-                    Error result
+        ( Browser caps rest, Success { onlyMode, data } ) ->
+            case unwrapFold rest parentId configs ( [], acc ) of
+                ( subQueue, Success result ) ->
+                    let
+                        newQueues =
+                            List.map (\caps -> Queue ( caps, subQueue )) caps
+                                |> Array.fromList
+                                |> Array.append result.queues
+                    in
+                    ( queue, Success { result | queues = newQueues } )
 
-        ( Batch listData, Success onlyMode acc ) ->
-            case listData |> List.foldl (\i acc2 -> unwrapFold skiping only offset_ i acc2) (Success onlyMode []) of
-                Success onlyMode a ->
-                    a ++ acc |> Success onlyMode
+                ( _, Error err ) ->
+                    ( [], Error err )
 
-                Error result ->
-                    Error result
+        ( Labeled text rest, Success ({ onlyMode, data } as model) ) ->
+            let
+                item =
+                    Text skip only text
+
+                itemId =
+                    NestedSet.length data
+
+                newAcc =
+                    Success { model | data = NestedSet.insert parentId item data }
+            in
+            unwrapFold rest itemId configs ( queue, newAcc )
+
+        ( Skipped rest, Success { onlyMode, data } ) ->
+            unwrapFold rest parentId { configs | skip = True } ( queue, acc )
+
+        ( Only rest, Success model ) ->
+            unwrapFold rest parentId { configs | only = True } ( queue, Success { model | onlyMode = True } )
+
+        ( Batch listRest, Success { onlyMode, data } ) ->
+            listRest
+                |> List.foldl (\rest acc2 -> unwrapFold rest parentId configs acc2) ( queue, acc )
+
+        ( ParseError err, Success { onlyMode, data } ) ->
+            ( queue, Error err )

@@ -1,8 +1,8 @@
-module WebDriver.LowLevel.Capabilities exposing (Capabilities, default, encode, withBrowser)
+module WebDriver.LowLevel.Capabilities exposing (Capabilities, ChromeOptionsData, default, defaultChromeOptions, encode, withBrowser, withChromeOptions)
 
 {-|
 
-@docs Capabilities,default, withBrowser, encode
+@docs Capabilities, default, withBrowser, encode, withChromeOptions, defaultChromeOptions, ChromeOptionsData
 
 -}
 
@@ -20,12 +20,17 @@ type Capabilities
         { browserName : String
         , javascriptEnabled : Bool
         , platform : String
-        , chromeOptions :
-            { androidPackage : String --"com.google.android.apps.chrome",
-            , args : List String
-            , extensions : List String
-            }
+        , chromeOptions : ChromeOptionsData
         }
+
+
+{-| Special options for chrome, that can extend functionality of chrome browser
+-}
+type alias ChromeOptionsData =
+    { androidPackage : String --"com.google.android.apps.chrome",
+    , args : List String
+    , extensions : List String
+    }
 
 
 {-| Encodes Capabilities for sending to WebDriver
@@ -43,6 +48,11 @@ encode caps =
 baseEncode : ({ a | browserName : String, javascriptEnabled : Bool } -> List ( String, Encode.Value )) -> { a | browserName : String, javascriptEnabled : Bool } -> Encode.Value
 baseEncode addition data =
     let
+        --   [ ( "browserName", Encode.string "Safari" )
+        -- , ( "platformName", Encode.string "iOS" )
+        -- , ( "deviceName", Encode.string "iPhone Simulator" )
+        -- , ( "automationName", Encode.string "XCUITest" )
+        -- , ( "javascriptEnabled", Encode.bool data.javascriptEnabled )
         result =
             [ ( "browserName", Encode.string data.browserName )
             , ( "javascriptEnabled", Encode.bool data.javascriptEnabled )
@@ -61,6 +71,32 @@ default =
         , platform = "ANY"
         , javascriptEnabled = True
         }
+
+
+{-| -}
+defaultChromeOptions : ChromeOptionsData
+defaultChromeOptions =
+    { androidPackage = ""
+    , args = []
+    , extensions = []
+    }
+
+
+{-| Set chromeOptions
+-}
+withChromeOptions : ChromeOptionsData -> Capabilities -> Capabilities
+withChromeOptions options base_ =
+    case base_ of
+        Capabilities base ->
+            ChromeCapabilities
+                { browserName = base.browserName
+                , javascriptEnabled = base.javascriptEnabled
+                , platform = base.platform
+                , chromeOptions = options
+                }
+
+        ChromeCapabilities base ->
+            ChromeCapabilities { base | chromeOptions = options }
 
 
 {-| -}
@@ -117,23 +153,6 @@ withBrowser browserName caps =
 --         "chromeOptions":{ "args": ["--headless"]}
 -- 	}
 -- }
-
-
-type ChromeOptions
-    = ChromeOptions ChromeOptionsData
-
-
-type alias WithChromeOptions =
-    { chromeOptions : ChromeOptionsData }
-
-
-type alias ChromeOptionsData =
-    { args : List String
-    , extensions : List String
-    }
-
-
-
 -- chromeOptions : ChromeOptions -> Capabilities -> Capabilities
 -- chromeOptions (ChromeOptions options) (Capabilities caps) =
 --     Capabilities

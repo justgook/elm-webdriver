@@ -9,7 +9,7 @@
   },
   "devDependencies": {},
   "scripts": {
-    "test": "elm-make Main.elm --output=bundle.js && node -e 'var XMLHttpRequest = require(\"xhr2\"); require(\"./bundle.js\").Main.worker().ports.log.subscribe((a)=>process.stdout.write(a))'"
+    "test": "elm-make src/Main.elm --output=bundle.js && node -e 'var XMLHttpRequest = require(\"xhr2\"); require(\"./bundle.js\").Main.worker().ports.log.subscribe((a)=>process.stdout.write(a))'"
   },
   "author": "",
   "license": "ISC"

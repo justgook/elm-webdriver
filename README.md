@@ -13,7 +13,7 @@ To run the example tests in this repo, do the following.
 1. Clone this repo (for more info on how to clone a repo, checkout
    [Atlassian's
    tutorial](https://confluence.atlassian.com/bitbucket/clone-a-repository-223217891.html))
-1. `cd` into `elm-webdriver/tests`
+1. `cd` into `elm-webdriver/test`
 1. Run `yarn && yarn test`
     1. If you get an error similar to `Problem with Webdriver host (Unable
         to make a connection. Is your network working?)`, you may need to
@@ -35,6 +35,7 @@ To run the example tests in this repo, do the following.
   - [ChromeDriver](http://chromedriver.chromium.org/)
   - [GeckoDriver](https://github.com/mozilla/geckodriver)
   - [Selenium Standalone Server](https://www.seleniumhq.org/download/)
+  - [Appium](http://appium.io/)
 
 # Setup
 

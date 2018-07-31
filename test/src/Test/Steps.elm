@@ -1,15 +1,9 @@
-module Main exposing (..)
+module Test.Steps exposing (suite)
 
 import Task
 import WebDriver.Element as Selector
 import WebDriver.Expect as Expect
-import WebDriver.Runner as Runner exposing (run)
 import WebDriver.Test as WebDriver exposing (describe, only, skip, test)
-
-
-main : Runner.TestRunner
-main =
-    run suite
 
 
 suite : WebDriver.Test
@@ -48,7 +42,7 @@ suite =
                 ]
             ]
         , describe "Mock Html page"
-            [ test "elment testing" <|
+            [ test "element testing" <|
                 \{ url, element, text } ->
                     url mock
                         |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
@@ -56,6 +50,10 @@ suite =
                         |> Task.andThen (.value >> Expect.equal "Hello World")
             ]
         ]
+
+
+
+-- VirtualDom.on : String -> Handler msg -> Attribute msg
 
 
 blankPage : String
