@@ -1,8 +1,8 @@
 module Test.Browsers exposing (suite)
 
 import Task
-import WebDriver.Browser as Browser exposing (browsers)
-import WebDriver.Test as WebDriver exposing (describe, only, skip, test)
+import WebDriver as WebDriver exposing (describe, only, skip, test)
+import WebDriver.Helper.Browser as Browser exposing (browsers)
 
 
 suite : WebDriver.Test

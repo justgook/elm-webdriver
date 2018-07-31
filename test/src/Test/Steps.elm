@@ -1,9 +1,9 @@
 module Test.Steps exposing (suite)
 
 import Task
-import WebDriver.Element as Selector
+import WebDriver as WebDriver exposing (describe, only, skip, test)
 import WebDriver.Expect as Expect
-import WebDriver.Test as WebDriver exposing (describe, only, skip, test)
+import WebDriver.Step.Element as Selector
 
 
 suite : WebDriver.Test
