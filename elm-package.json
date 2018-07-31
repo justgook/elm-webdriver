@@ -9,15 +9,14 @@
     "./Libraries/elm-ansi-compose/src"
   ],
   "exposed-modules": [
-    "WebDriver.Test",
+    "WebDriver",
     "WebDriver.Expect",
-    "WebDriver.Browser",
+    "WebDriver.Helper.Browser",
+    "WebDriver.Helper.Capabilities",
     "WebDriver.Runner",
     "WebDriver.Step",
-    "WebDriver.Element",
-    "WebDriver.Keyboard",
-    "WebDriver.Action",
-    "WebDriver.LowLevel.Capabilities"
+    "WebDriver.Step.Element",
+    "WebDriver.Step.Action"
   ],
   "dependencies": {
     "NoRedInk/elm-decode-pipeline": "3.0.0 <= v < 4.0.0",

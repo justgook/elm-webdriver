@@ -1,4 +1,4 @@
-module WebDriver.LowLevel.Capabilities exposing (Capabilities, ChromeOptionsData, default, defaultChromeOptions, encode, withBrowser, withChromeOptions)
+module WebDriver.Helper.Capabilities exposing (Capabilities, ChromeOptionsData, default, defaultChromeOptions, encode, withBrowser, withChromeOptions)
 
 {-|
 

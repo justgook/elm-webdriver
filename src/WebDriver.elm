@@ -1,4 +1,4 @@
-module WebDriver.Test exposing (Test, concat, describe, only, skip, test)
+module WebDriver exposing (Test, concat, describe, only, skip, test)
 
 {-|
 

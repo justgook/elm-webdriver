@@ -1,4 +1,4 @@
-module WebDriver.Browser
+module WebDriver.Helper.Browser
     exposing
         ( Browser
         , browsers
@@ -16,8 +16,8 @@ module WebDriver.Browser
 
 -}
 
+import WebDriver.Helper.Capabilities as Capabilities exposing (Capabilities)
 import WebDriver.Internal exposing (BrowserData, Test(Browser))
-import WebDriver.LowLevel.Capabilities as Capabilities exposing (Capabilities)
 
 
 {-| Name and Capabilities pair that can be used to wrap tests, and report (display name) / run tests in specific browser

@@ -13,12 +13,12 @@ import Json.Encode
 import NestedSet exposing (NestedSet)
 import Platform exposing (programWithFlags)
 import Task exposing (Task)
+import WebDriver exposing (Test)
+import WebDriver.Helper.Capabilities as Capabilities exposing (Capabilities)
 import WebDriver.Internal as Internal exposing (Expectation(..), Node(..), Parsed(..), Queue(Queue), TestStatus(..), unwrap)
 import WebDriver.Internal.Browser as WebDriver exposing (browser)
 import WebDriver.Internal.Render exposing (render)
-import WebDriver.LowLevel.Capabilities as Capabilities exposing (Capabilities)
 import WebDriver.Step as WebDriver exposing (Functions)
-import WebDriver.Test exposing (Test)
 
 
 {-| -}

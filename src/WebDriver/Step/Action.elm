@@ -1,4 +1,4 @@
-module WebDriver.Action exposing (Action)
+module WebDriver.Step.Action exposing (Action)
 
 {-|
 

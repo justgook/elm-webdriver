@@ -97,16 +97,15 @@ module WebDriver.Step
 -}
 
 import Http
-import Json.Decode exposing (Decoder)
 import Json.Encode as Json
 import Task exposing (Task)
-import WebDriver.Action exposing (Action)
-import WebDriver.Element exposing (Element, Selector)
 import WebDriver.Internal.HttpHelper as Http exposing (toTask)
 import WebDriver.Internal.Value as Value exposing (Answer, Out, WindowHandle(Handle), answerDecoder, jsonFromSelector)
 import WebDriver.Internal.Value.Action as Action
 import WebDriver.Internal.Value.Status as Status exposing (Status)
 import WebDriver.Internal.Value.Timeouts as Timeouts exposing (Timeouts)
+import WebDriver.Step.Action exposing (Action)
+import WebDriver.Step.Element exposing (Element, Selector)
 
 
 type alias Step value =
