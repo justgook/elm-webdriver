@@ -9,11 +9,11 @@ suite : WebDriver.Test
 suite =
     -- only <|
     describe "Running in different browsers"
-        [ browsers [ Browser.chrome, Browser.headlessChrome, Browser.firefox ] <|
+        [ browsers [ Browser.chrome, Browser.headlessChrome, Browser.firefoxes 3 ] <|
             describe "pack"
                 [ test "Always succeed1" <| \{ url, getUrl, refresh } -> Task.succeed ()
                 , test "Always succeed2" <| \{ url, getUrl, refresh } -> Task.succeed ()
-                , skip <| test "Always succeed3" <| \{ url, getUrl, refresh } -> Task.succeed ()
+                , test "Always succeed3" <| \{ url, getUrl, refresh } -> Task.succeed ()
                 , test "Always succeed4" <| \{ url, getUrl, refresh } -> Task.succeed ()
                 ]
         ]

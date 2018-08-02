@@ -41,6 +41,9 @@ To run the example tests in this repo, do the following.
 
 ## Quick Start
 ```elm
+import WebDriver
+import WebDriver.Runner exposing (TestRunner, run)
+
 suite : WebDriver.Test
 suite =
     describe "Web Page Navigate"
@@ -51,6 +54,9 @@ suite =
                     |> Task.andThen (.value >> attribute "innerText")
                     |> Task.andThen (.value >> Expect.equal "justgook/elm-webdriver")
         ]
+
+main : TestRunner
+main = run suite
 ```
 
 ## Running From CLI

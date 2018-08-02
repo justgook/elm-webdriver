@@ -1,4 +1,4 @@
-module WebDriver.Internal.Render exposing (..)
+module WebDriver.Internal.Render exposing (renderDot, renderDotLive, renderSpec, renderSpecLive)
 
 import Ansi exposing (Color(..))
 import Ansi.Compose exposing (Style, div, foreground, renderWindow, span, text, toModel)
@@ -10,11 +10,44 @@ import WebDriver.Internal exposing (Expectation(..), Node(..), Queue(..), TestSt
 import WebDriver.Internal.Port as Log
 
 
--- render : { a | data : NestedSet Node, queues : Array Queue } -> Cmd msg
+-- http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
 
 
-render : { a | data : NestedSet Node, queues : Array Queue } -> Cmd msg
-render ({ queues, data } as input) =
+renderDot : { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> Cmd msg
+renderDot input =
+    Log.log " - Not Implemented Yet"
+
+
+renderDotLive : { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> Cmd msg
+renderDotLive ({ queues, data, onlyMode } as input) =
+    let
+        render_ index node acc =
+            let
+                nextNodes =
+                    case node of
+                        Test { status, only } ->
+                            status |> Dict.toList |> List.map status2dot
+
+                        Text _ _ _ ->
+                            []
+            in
+            acc ++ nextNodes
+
+        result =
+            init Ansi.Log.Raw
+                |> toModel (NestedSet.indexedFoldr render_ [] data)
+                |> renderWindow
+    in
+    "\x1B[1000D\x1B[2K\x1B[1A" ++ result ++ "\n" |> Log.log
+
+
+renderSpec : { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> Cmd msg
+renderSpec input =
+    Log.log " - Not Implemented Yet"
+
+
+renderSpecLive : { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> Cmd msg
+renderSpecLive ({ queues, data, onlyMode } as input) =
     let
         render_ index node acc =
             let
@@ -22,7 +55,7 @@ render ({ queues, data } as input) =
                     NestedSet.depth index data
 
                 nextNodes =
-                    stringFromNode queues node depth
+                    stringFromNode onlyMode queues node depth
             in
             acc ++ nextNodes
 
@@ -37,6 +70,36 @@ render ({ queues, data } as input) =
         |> Cmd.batch
 
 
+stringFromNode : Bool -> Array Queue -> Node -> Int -> List Ansi.Compose.AnsiNode
+stringFromNode onlyMode queues node depth =
+    let
+        status2string_ =
+            status2string depth queues
+
+        offset =
+            String.repeat depth "  "
+    in
+    case node of
+        Text skip only text ->
+            if onlyMode && not only then
+                []
+            else
+                (offset ++ text ++ "\n")
+                    |> (if skip then
+                            span skipStyle
+                        else
+                            span infoStyle
+                       )
+                    |> List.singleton
+
+        Test { status, only } ->
+            if onlyMode && not only then
+                []
+            else
+                (status |> Dict.toList |> List.map status2string_) ++ [ text "\n" ]
+
+
+status2string : Int -> Array Queue -> ( Int, TestStatus ) -> Ansi.Compose.AnsiNode
 status2string depth queues ( queueID, status ) =
     let
         browserName =
@@ -71,27 +134,26 @@ status2string depth queues ( queueID, status ) =
             offset ++ "Running in " ++ browserName ++ "\n" |> span runningStyle
 
 
-stringFromNode : Array Queue -> Node -> Int -> List Ansi.Compose.AnsiNode
-stringFromNode queues node depth =
-    let
-        status2string_ =
-            status2string depth queues
+status2dot : ( a, TestStatus ) -> Ansi.Compose.AnsiNode
+status2dot ( queueID, status ) =
+    case status of
+        Done (Fail critical {- Exit -} error) ->
+            "F" |> span errorStyle
 
-        offset =
-            String.repeat depth "  "
-    in
-    case node of
-        Text skip only text ->
-            (offset ++ text ++ "\n")
-                |> (if skip then
-                        span skipStyle
-                    else
-                        span infoStyle
-                   )
-                |> List.singleton
+        Done Pass ->
+            "." |> span successStyle
 
-        Test { status } ->
-            (status |> Dict.toList |> List.map status2string_) ++ [ text "\n" ]
+        OnlyModeSkip ->
+            "-" |> span skipStyle
+
+        Skip ->
+            "-" |> span skipStyle
+
+        InQueue ->
+            "_" |> span waitingStyle
+
+        Running ->
+            "R" |> span runningStyle
 
 
 skipStyle : List Style

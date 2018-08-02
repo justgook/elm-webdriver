@@ -112,19 +112,25 @@ type alias Step value =
     Task String (Answer value)
 
 
-{-| Url to WebDriver host
+{-| Configuration containing url to WebDriver host, used in
+
+  - [sessionStart](#sessionStart)
+  - [status](#status)
+
 -}
 type alias Host =
     { url : String }
 
 
 {-| Url to WebDriver host and current browsing session
+used in most of step functins
 -}
 type alias WithSession =
     { sessionId : String, url : String }
 
 
-{-| -}
+{-| Functions that is passed to [tests](../WebDriver#test), with already created session
+-}
 type alias Functions =
     { back : Step ()
     , close : Step ()
@@ -237,7 +243,12 @@ functions options =
     }
 
 
-{-| -}
+{-| Creates a new session with the desired capabilities.
+and task result in info of created session as Json.Value
+
+> Note: Most of cases you don't need it runner will crates session for you and stop, after test is done
+
+-}
 sessionStart : Host -> Json.Value -> Out Json.Value
 sessionStart settings capabilities =
     capabilities
@@ -247,7 +258,11 @@ sessionStart settings capabilities =
            )
 
 
-{-| -}
+{-| Stops session created with [`sessionStart`](#sessionStart) functon
+
+> Note: Most of cases you don't need it runner will crates session for you and stop, after test is done
+
+-}
 sessionStop : WithSession -> Out ()
 sessionStop settings =
     Http.delete (settings.url ++ "/session/" ++ settings.sessionId)

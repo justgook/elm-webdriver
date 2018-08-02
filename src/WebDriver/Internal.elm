@@ -34,7 +34,11 @@ type Test
 
 
 type alias BrowserData =
-    { name : String, instances : Int, dirverHost : String, capabilities : Json.Value }
+    { name : String
+    , instances : Int
+    , dirverHost : String
+    , capabilities : Json.Value
+    }
 
 
 type ErrorLevel

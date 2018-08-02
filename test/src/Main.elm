@@ -1,12 +1,15 @@
-module Main exposing (..)
+module Main exposing (main)
 
 import Test.Browsers
-import Test.Steps exposing (suite)
-import WebDriver exposing (concat)
-import WebDriver.Runner as Runner exposing (run)
+import Test.Steps
+import WebDriver exposing (concat, only)
+import WebDriver.Runner as Runner exposing (TestRunner, configuration, runWith)
 
 
-main : Runner.TestRunner
+main : TestRunner
 main =
-    concat [ Test.Browsers.suite, Test.Steps.suite ]
-        |> run
+    concat
+        [ Test.Browsers.suite
+        , Test.Steps.suite
+        ]
+        |> runWith { configuration | reporter = Runner.DotReporter }
