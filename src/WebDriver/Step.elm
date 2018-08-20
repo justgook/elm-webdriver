@@ -52,6 +52,7 @@ module WebDriver.Step
         , text
         , title
         , url
+        , value
         , window
         , windowHandle
         , windowHandles
@@ -61,7 +62,7 @@ module WebDriver.Step
 @docs url, getUrl
 
 ##Elements
-@docs element, elements, click, clear, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property , css, rect, elementScreenshot
+@docs element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property , css, rect, elementScreenshot
 
 ##History Navigation
 @docs back, forward, refresh
@@ -100,7 +101,7 @@ import Http
 import Json.Encode as Json
 import Task exposing (Task)
 import WebDriver.Internal.HttpHelper as Http exposing (toTask)
-import WebDriver.Internal.Value as Value exposing (Answer, Out, WindowHandle(Handle), answerDecoder, jsonFromSelector)
+import WebDriver.Internal.Value as Value exposing (Answer, Cookie, Out, WindowHandle(Handle), answerDecoder, jsonFromSelector)
 import WebDriver.Internal.Value.Action as Action
 import WebDriver.Internal.Value.Status as Status exposing (Status)
 import WebDriver.Internal.Value.Timeouts as Timeouts exposing (Timeouts)
@@ -145,9 +146,9 @@ type alias Functions =
     , windowHandle : Step WindowHandle
     , windowHandles : Step (List WindowHandle)
     , window : WindowHandle -> Step ()
-    , fullscreen : WindowHandle -> Step ()
-    , maximize : WindowHandle -> Step ()
-    , minimize : WindowHandle -> Step ()
+    , fullscreen : Step ()
+    , maximize : Step ()
+    , minimize : Step ()
     , frameParent : Step ()
     , frame : Json.Value -> Step ()
     , element : Selector -> Step Element
@@ -163,14 +164,15 @@ type alias Functions =
     , elementInElement : Selector -> Element -> Step Element
     , elementsInElement : Selector -> Element -> Step (List Element)
     , getWindowRect : Step { height : Int, width : Int, x : Int, y : Int }
-    , setWindowRect : { height : Int, width : Int, x : Int, y : Int } -> Step ()
+    , setWindowRect : { height : Int, width : Int, x : Int, y : Int } -> Step { height : Int, width : Int, x : Int, y : Int }
     , clear : Element -> Step ()
     , click : Element -> Step ()
+    , value : String -> Element -> Step ()
     , execute : String -> List Json.Value -> Step Json.Value
     , executeAsync : String -> List Json.Value -> Step Json.Value
     , addCookie : String -> String -> Step ()
-    , cookie : String -> Step String
-    , cookies : Step (List String)
+    , cookie : String -> Step Cookie
+    , cookies : Step (List Cookie)
     , deleteCookie : String -> Step ()
     , deleteCookies : Step ()
     , alertAccept : Step ()
@@ -204,9 +206,9 @@ functions options =
     , windowHandles = windowHandles options |> toTask
     , close = close options |> toTask
     , window = \data -> window options data |> toTask
-    , fullscreen = \data -> window options data |> toTask
-    , maximize = \data -> window options data |> toTask
-    , minimize = \data -> window options data |> toTask
+    , fullscreen = fullscreen options |> toTask
+    , maximize = maximize options |> toTask
+    , minimize = minimize options |> toTask
     , frameParent = frameParent options |> toTask
     , frame = \data -> frame options data |> toTask
     , element = \data -> element options data |> toTask
@@ -224,6 +226,7 @@ functions options =
     , setWindowRect = \data -> setWindowRect options data |> toTask
     , rect = \elm -> rect options elm |> toTask
     , click = \elm -> click options elm |> toTask
+    , value = \string elm -> value options string elm |> toTask
     , clear = \elm -> clear options elm |> toTask
     , execute = \script args -> execute options script args |> toTask
     , executeAsync = \script args -> execute options script args |> toTask
@@ -388,7 +391,7 @@ windowHandles settings =
 -}
 close : WithSession -> Out ()
 close settings =
-    Http.delete (settings.url ++ "/session/" ++ settings.sessionId ++ "window")
+    Http.delete (settings.url ++ "/session/" ++ settings.sessionId ++ "/window")
         answerDecoder.empty
 
 
@@ -399,7 +402,7 @@ window : WithSession -> WindowHandle -> Out ()
 window settings (Handle handle) =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/window")
         (Json.object
-            [ ( "handle"
+            [ ( "name"
               , Json.string handle
               )
             ]
@@ -461,7 +464,7 @@ getWindowRect settings =
 of the operating system window corresponding
 to the current top-level browsing context.
 -}
-setWindowRect : WithSession -> { height : Int, width : Int, x : Int, y : Int } -> Out ()
+setWindowRect : WithSession -> { height : Int, width : Int, x : Int, y : Int } -> Out { height : Int, width : Int, x : Int, y : Int }
 setWindowRect settings { height, width, x, y } =
     Http.post
         (settings.url ++ "/session/" ++ settings.sessionId ++ "/window/rect")
@@ -473,7 +476,7 @@ setWindowRect settings { height, width, x, y } =
             ]
             |> Http.jsonBody
         )
-        answerDecoder.empty
+        answerDecoder.decodeRect
 
 
 {-| Take a screenshot of the current viewport.
@@ -690,7 +693,7 @@ frame : WithSession -> Json.Value -> Out ()
 frame settings id =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/frame")
         (Json.object
-            [ ( "handle"
+            [ ( "id"
               , id
               )
             ]
@@ -772,7 +775,7 @@ Arguments may be any JSON-primitive, array, or JSON object.
 -}
 executeAsync : WithSession -> String -> List Json.Value -> Out Json.Value
 executeAsync settings function args =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/execute/sync")
+    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/execute/async")
         (Json.object
             [ ( "script"
               , Json.string function
@@ -792,18 +795,18 @@ executeAsync settings function args =
 
 {-| Get All Cookies
 -}
-cookies : WithSession -> Out (List String)
+cookies : WithSession -> Out (List Cookie)
 cookies settings =
     Http.get (settings.url ++ "/session/" ++ settings.sessionId ++ "/cookie")
-        answerDecoder.listSring
+        answerDecoder.cookies
 
 
 {-| Get Named Cookie
 -}
-cookie : WithSession -> String -> Out String
+cookie : { a | sessionId : String, url : String } -> String -> Out Cookie
 cookie settings name =
     Http.get (settings.url ++ "/session/" ++ settings.sessionId ++ "/cookie/" ++ name)
-        answerDecoder.string
+        answerDecoder.cookie
 
 
 {-| Delete cookies visible to the current page.
@@ -840,7 +843,7 @@ addCookie settings name value =
                   )
                 ]
     in
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/execute/sync")
+    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/cookie")
         (data |> Http.jsonBody)
         answerDecoder.empty
 
@@ -867,8 +870,7 @@ alertDismiss settings =
 -}
 alertText : WithSession -> Out String
 alertText settings =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/alert/text")
-        Http.emptyBody
+    Http.get (settings.url ++ "/session/" ++ settings.sessionId ++ "/alert/text")
         answerDecoder.string
 
 

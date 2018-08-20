@@ -4,6 +4,7 @@ module WebDriver.Helper.Browser
         , browsers
         , chrome
         , chromes
+        , configure
         , firefox
         , firefoxes
         , headlessChrome
@@ -12,7 +13,7 @@ module WebDriver.Helper.Browser
 
 {-|
 
-@docs browsers, Browser, chrome, firefox, headlessChrome, chromes, firefoxes, headlessChromes
+@docs browsers, Browser, chrome, firefox, headlessChrome, chromes, firefoxes, headlessChromes, configure
 
 -}
 
@@ -33,53 +34,67 @@ browsers list test =
     Browser list test
 
 
-{-| -}
-firefox : Browser
-firefox =
-    firefoxes 1
-
-
-{-| -}
-firefoxes : Int -> Browser
-firefoxes instances =
-    { name = "FireFox"
-    , capabilities =
-        Capabilities.default
-            |> Capabilities.withBrowser "firefox"
-            |> Capabilities.encode
-    , instances = instances
-    , dirverHost = "http://localhost:4444/wd/hub"
+{-| Configure webdriver host in one go
+-}
+configure : String -> { chrome : Browser, chromes : Int -> Browser, firefox : Browser, firefoxes : Int -> Browser, headlessChrome : Browser, headlessChromes : Int -> Browser }
+configure host =
+    { firefox = firefox host
+    , firefoxes = firefoxes host
+    , chrome = chrome host
+    , chromes = chromes host
+    , headlessChrome = headlessChrome host
+    , headlessChromes = headlessChromes host
     }
 
 
 {-| -}
-chrome : Browser
-chrome =
-    chromes 1
+firefox : String -> Browser
+firefox host =
+    firefoxes host 1
 
 
 {-| -}
-chromes : Int -> Browser
-chromes instances =
+firefoxes : String -> Int -> Browser
+firefoxes host instances =
+    { name = "FireFox"
+    , capabilities =
+        Capabilities.default
+            |> Capabilities.withBrowser "firefox"
+            |> Capabilities.withVersion "61.0"
+            |> Capabilities.encode
+    , instances = instances
+    , dirverHost = host
+    }
+
+
+{-| -}
+chrome : String -> Browser
+chrome host =
+    chromes host 1
+
+
+{-| -}
+chromes : String -> Int -> Browser
+chromes host instances =
     { name = "Chrome"
     , capabilities =
         Capabilities.default
             |> Capabilities.withBrowser "chrome"
             |> Capabilities.encode
     , instances = instances
-    , dirverHost = "http://localhost:4444/wd/hub"
+    , dirverHost = host
     }
 
 
 {-| -}
-headlessChrome : Browser
-headlessChrome =
-    headlessChromes 1
+headlessChrome : String -> Browser
+headlessChrome host =
+    headlessChromes host 1
 
 
 {-| -}
-headlessChromes : Int -> Browser
-headlessChromes instances =
+headlessChromes : String -> Int -> Browser
+headlessChromes host instances =
     let
         options =
             Capabilities.defaultChromeOptions
@@ -94,7 +109,7 @@ headlessChromes instances =
                 }
             |> Capabilities.encode
     , instances = instances
-    , dirverHost = "http://localhost:4444/wd/hub"
+    , dirverHost = host
     }
 
 

@@ -2,6 +2,7 @@ module WebDriver.Internal.Value
     exposing
         ( Answer
         , AnswerDecoder
+        , Cookie
         , Element(..)
         , Out
         , Selector(..)
@@ -92,6 +93,8 @@ answerDecoder :
     , windowHandle : AnswerDecoder WindowHandle
     , windowHandles : AnswerDecoder (List WindowHandle)
     , decodeRect : AnswerDecoder { height : Int, width : Int, x : Int, y : Int }
+    , cookie : AnswerDecoder Cookie
+    , cookies : AnswerDecoder (List Cookie)
     }
 answerDecoder =
     { value = Decode.value |> decodeAnswer
@@ -107,7 +110,37 @@ answerDecoder =
     , windowHandle = Decode.string |> Decode.map Handle |> decodeAnswer
     , windowHandles = Decode.string |> Decode.map Handle |> Decode.list |> decodeAnswer
     , decodeRect = decodeRect |> decodeAnswer
+    , cookie = decodeCookie |> decodeAnswer
+    , cookies = decodeCookies |> decodeAnswer
     }
+
+
+type alias Cookie =
+    { name : String
+    , value : String
+    , domain : Maybe String
+    , expiry : Maybe Int
+    , httpOnly : Maybe Bool
+    , path : Maybe String
+    , secure : Maybe Bool
+    }
+
+
+decodeCookies : Decoder (List Cookie)
+decodeCookies =
+    Decode.list decodeCookie
+
+
+decodeCookie : Decoder Cookie
+decodeCookie =
+    Decode.map7 Cookie
+        (Decode.field "name" Decode.string)
+        (Decode.field "value" Decode.string)
+        (Decode.maybe (Decode.field "domain" Decode.string))
+        (Decode.maybe (Decode.field "expiry" Decode.int))
+        (Decode.maybe (Decode.field "httpOnly" Decode.bool))
+        (Decode.maybe (Decode.field "path" Decode.string))
+        (Decode.maybe (Decode.field "secure" Decode.bool))
 
 
 rect : Int -> Int -> Int -> Int -> { height : Int, width : Int, x : Int, y : Int }

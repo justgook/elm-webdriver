@@ -1,8 +1,18 @@
-module WebDriver.Helper.Capabilities exposing (Capabilities, ChromeOptionsData, default, defaultChromeOptions, encode, withBrowser, withChromeOptions)
+module WebDriver.Helper.Capabilities
+    exposing
+        ( Capabilities
+        , ChromeOptionsData
+        , default
+        , defaultChromeOptions
+        , encode
+        , withBrowser
+        , withChromeOptions
+        , withVersion
+        )
 
 {-|
 
-@docs Capabilities, default, withBrowser, encode, withChromeOptions, defaultChromeOptions, ChromeOptionsData
+@docs Capabilities, default, withBrowser, withVersion, encode, withChromeOptions, defaultChromeOptions, ChromeOptionsData
 
 -}
 
@@ -13,12 +23,12 @@ import Json.Encode as Encode
 type Capabilities
     = Capabilities
         { browserName : String
-        , javascriptEnabled : Bool
+        , version : String
         , platform : String
         }
     | ChromeCapabilities
         { browserName : String
-        , javascriptEnabled : Bool
+        , version : String
         , platform : String
         , chromeOptions : ChromeOptionsData
         }
@@ -45,7 +55,7 @@ encode caps =
             baseEncode (always []) data
 
 
-baseEncode : ({ a | browserName : String, javascriptEnabled : Bool } -> List ( String, Encode.Value )) -> { a | browserName : String, javascriptEnabled : Bool } -> Encode.Value
+baseEncode : ({ a | browserName : String, version : String } -> List ( String, Encode.Value )) -> { a | browserName : String, version : String } -> Encode.Value
 baseEncode addition data =
     let
         --   [ ( "browserName", Encode.string "Safari" )
@@ -55,7 +65,7 @@ baseEncode addition data =
         -- , ( "javascriptEnabled", Encode.bool data.javascriptEnabled )
         result =
             [ ( "browserName", Encode.string data.browserName )
-            , ( "javascriptEnabled", Encode.bool data.javascriptEnabled )
+            , ( "version", Encode.string data.version )
             ]
                 ++ addition data
     in
@@ -69,7 +79,7 @@ default =
     Capabilities
         { browserName = "chrome"
         , platform = "ANY"
-        , javascriptEnabled = True
+        , version = "68.0"
         }
 
 
@@ -90,7 +100,7 @@ withChromeOptions options base_ =
         Capabilities base ->
             ChromeCapabilities
                 { browserName = base.browserName
-                , javascriptEnabled = base.javascriptEnabled
+                , version = base.version
                 , platform = base.platform
                 , chromeOptions = options
                 }
@@ -108,6 +118,17 @@ withBrowser browserName caps =
 
         ChromeCapabilities data ->
             ChromeCapabilities { data | browserName = browserName }
+
+
+{-| -}
+withVersion : String -> Capabilities -> Capabilities
+withVersion version caps =
+    case caps of
+        Capabilities data ->
+            Capabilities { data | version = version }
+
+        ChromeCapabilities data ->
+            ChromeCapabilities { data | version = version }
 
 
 

@@ -41,6 +41,7 @@ To run the example tests in this repo, do the following.
 
 ## Quick Start
 ```elm
+import Task
 import WebDriver
 import WebDriver.Runner exposing (TestRunner, run)
 
