@@ -45,24 +45,25 @@ suite =
                                 String.contains "Hello" value
                                     |> Expect.true ("Expected the title contains text Hello, but it is `" ++ value ++ "`")
                             )
-            , describe "elemnt properties"
+            , describe "Element Properties"
                 [ test "element, text" <|
                     \{ url, element, text } ->
                         url mock
                             |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
                             |> Task.andThen (.value >> text)
                             |> Task.andThen (.value >> Expect.equal "Hello World")
-                , test "elements" <|
-                    \{ url, elements, text } ->
-                        url mock
-                            |> Task.andThen (\_ -> "h1" |> Selector.css |> elements)
-                            |> Task.andThen
-                                (.value
-                                    >> (List.head
-                                            >> Maybe.map (text >> Task.andThen (.value >> Expect.equal "Hello World"))
-                                            >> Maybe.withDefault (Task.fail "no elemment found")
-                                       )
-                                )
+                , skip <|
+                    test "elements" <|
+                        \{ url, elements, text } ->
+                            url mock
+                                |> Task.andThen (\_ -> "h1" |> Selector.css |> elements)
+                                |> Task.andThen
+                                    (.value
+                                        >> (List.head
+                                                >> Maybe.map (text >> Task.andThen (.value >> Expect.equal "Hello World"))
+                                                >> Maybe.withDefault (Task.fail "no elemment found")
+                                           )
+                                    )
                 , test "selected" <|
                     \{ url, selected, element } ->
                         url form
@@ -237,12 +238,11 @@ suite =
                 \{ url, alertAccept } -> url alertMock |> Task.andThen (\_ -> alertAccept)
             , test "screenshot" <|
                 \{ url, screenshot } -> url mock |> Task.andThen (\_ -> screenshot)
-            , skip <|
-                test "elementScreenshot" <|
-                    \{ url, element, elementScreenshot } ->
-                        url mock
-                            |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
-                            |> Task.andThen (.value >> elementScreenshot)
+            , test "elementScreenshot" <|
+                \{ url, element, elementScreenshot } ->
+                    url mock
+                        |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
+                        |> Task.andThen (.value >> elementScreenshot)
             , test "status" <|
                 \{ url, status } ->
                     url mock |> Task.andThen (\_ -> status)
@@ -261,42 +261,40 @@ suite =
                     url mock
                         |> Task.andThen (\_ -> windowHandles)
                         |> Task.andThen (.value >> List.length >> Expect.atLeast 1)
-            , skip <|
-                test "close" <|
-                    \{ url, windowHandles, close } ->
-                        url mock
-                            --open multiple windows
-                            |> Task.andThen (\_ -> close)
-                            |> Task.andThen (\_ -> windowHandles)
-            , skip <|
-                test "fullscreen" <|
-                    \{ url, fullscreen } -> url mock |> Task.andThen (\_ -> fullscreen)
-            , skip <|
-                test "maximize" <|
-                    \{ url, maximize } -> url mock |> Task.andThen (\_ -> maximize)
-            , skip <|
-                test "minimize" <|
-                    \{ url, minimize } -> url mock |> Task.andThen (\_ -> minimize)
-            , skip <|
-                test "frameParent" <|
-                    \{ url, frameParent } -> url mock |> Task.andThen (\_ -> frameParent)
+            , test "close" <|
+                \{ url, windowHandles, close } ->
+                    url newWindow
+                        |> Task.andThen (\_ -> windowHandles)
+                        |> Task.andThen (.value >> List.length >> Expect.equal 2)
+                        |> Task.andThen (\_ -> close)
+                        |> Task.andThen (\_ -> windowHandles)
+                        |> Task.andThen (.value >> List.length >> Expect.equal 1)
+            , test "fullscreen" <|
+                \{ url, fullscreen } -> url mock |> Task.andThen (\_ -> fullscreen)
+            , test "maximize" <|
+                \{ url, maximize } -> url mock |> Task.andThen (\_ -> maximize)
+            , test "minimize" <|
+                \{ url, minimize } -> url mock |> Task.andThen (\_ -> minimize)
+            , test "frameParent" <|
+                \{ url, frameParent } -> url mock |> Task.andThen (\_ -> frameParent)
             , test "frame" <|
                 \{ url, frame } -> url mock |> Task.andThen (\_ -> frame Json.null)
             ]
         , test "actions" <|
-            \{ url, actions } -> url mock |> Task.andThen (\_ -> Task.succeed ())
+            \{ url, actions } -> url mock |> Task.andThen (\_ -> Task.fail "not implemented")
         , test "release" <|
-            \{ url, release } -> url mock |> Task.andThen (\_ -> Task.succeed ())
+            \{ url, release } -> url mock |> Task.andThen (\_ -> Task.fail "not implemented")
         ]
-
-
-
--- VirtualDom.on : String -> Handler msg -> Attribute msg
 
 
 blankPage : String
 blankPage =
     "data:text/plain,Hello"
+
+
+newWindow : String
+newWindow =
+    "data:text/html,<script> window.open('" ++ blankPage ++ "', '_blank').focus()</script>"
 
 
 tiltlePage : String

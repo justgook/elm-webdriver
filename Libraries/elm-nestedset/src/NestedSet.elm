@@ -10,6 +10,7 @@ module NestedSet
         , length
         , map
         , order
+        , path
         , set
         , update
         )
@@ -34,7 +35,7 @@ module NestedSet
 
 ## Fast
 
-@docs get, set, update, map, depth
+@docs get, set, update, depth, path
 
 
 ## Slow
@@ -111,7 +112,8 @@ insert index value ((NestedSet { tree }) as income) =
                                 insertAfter lastInTopLevel value income
 
                             Nothing ->
-                                Debug.log "Imposible State - make me imposible" income
+                                -- Debug.log "Imposible State - make me imposible"
+                                income
                     else
                         income
 
@@ -175,7 +177,7 @@ insertAfter index value ((NestedSet { tree }) as income) =
 
 
 insertMapper_ : Int -> { a | lft : Int, rgt : Int } -> { a | lft : Int, rgt : Int }
-insertMapper_ input ({ rgt, lft } as data) =
+insertMapper_ input ({ rgt, lft } as data_) =
     let
         applyIf condition fn value =
             if condition then
@@ -189,7 +191,7 @@ insertMapper_ input ({ rgt, lft } as data) =
         incRight data =
             { data | rgt = data.rgt + 2 }
     in
-    data
+    data_
         |> applyIf (lft > input) incLeft
         |> applyIf (rgt > input) incRight
 
@@ -237,21 +239,32 @@ update index f data =
             data
 
 
-mapNode_ : ({ lft : Int, parent_id : Int, rgt : Int, value : a } -> { lft : Int, parent_id : Int, rgt : Int, value : a1 }) -> NestedSet a -> NestedSet a1
+mapNode_ : ({ lft : Int, parent_id : Int, rgt : Int, value : a } -> { lft : Int, parent_id : Int, rgt : Int, value : b }) -> NestedSet a -> NestedSet b
 mapNode_ f (NestedSet data) =
-    NestedSet { data | tree = Array.map (\(Node a) -> f a |> Node) data.tree }
+    NestedSet { balanced = data.balanced, tree = Array.map (\(Node a) -> f a |> Node) data.tree }
 
 
 mapValue_ : (a -> b) -> Node a -> Node b
 mapValue_ f (Node data) =
-    f data.value |> (\output -> Node { data | value = output })
+    f data.value
+        |> (\output ->
+                Node
+                    { lft = data.lft
+                    , rgt = data.rgt
+                    , parent_id = data.parent_id
+                    , value = output
+                    }
+           )
 
 
 {-| Apply a function on every element in an tree.
 -}
 map : (a -> b) -> NestedSet a -> NestedSet b
 map f (NestedSet data) =
-    NestedSet { data | tree = Array.map (mapValue_ f) data.tree }
+    NestedSet
+        { balanced = data.balanced
+        , tree = Array.map (mapValue_ f) data.tree
+        }
 
 
 
@@ -272,8 +285,8 @@ map f (NestedSet data) =
 indexedFoldr : (Int -> a -> b -> b) -> b -> NestedSet a -> b
 indexedFoldr f acc ((NestedSet { tree, balanced }) as income) =
     let
-        foldValue f ( index, Node data ) acc_ =
-            f index data.value acc_
+        foldValue f_ ( index, Node data ) acc_ =
+            f_ index data.value acc_
     in
     tree
         |> Array.toIndexedList
@@ -300,6 +313,27 @@ order ((NestedSet { tree, balanced }) as income) =
                     |> Array.fromList
             , balanced = True
             }
+
+
+{-| Retrieve path for single item
+-}
+path : Int -> NestedSet a -> List a
+path index data =
+    let
+        path_ current index_ ((NestedSet { tree }) as income) =
+            case Array.get index_ tree of
+                Just (Node { parent_id, value }) ->
+                    path_ (value :: current) parent_id income
+
+                Nothing ->
+                    current
+    in
+    path_ [] index data |> dropLast
+
+
+dropLast : List a -> List a
+dropLast list =
+    List.take (List.length list - 1) list
 
 
 {-| Calculate depth of Node by it index.

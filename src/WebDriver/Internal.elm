@@ -1,17 +1,4 @@
-module WebDriver.Internal
-    exposing
-        ( BrowserData
-        , ErrorLevel(..)
-        , Expectation(..)
-        , Node(..)
-        , Parsed(..)
-        , Queue(..)
-        , Test(..)
-        , TestStatus(..)
-        , duplicatedName
-        , failNow
-        , unwrap
-        )
+module WebDriver.Internal exposing (BrowserData, ErrorLevel(..), Expectation(..), Node(..), Parsed(..), Queue(..), Test(..), TestStatus(..), duplicatedName, failNow, unwrap)
 
 import Array exposing (Array)
 import Dict exposing (Dict)
@@ -91,6 +78,7 @@ duplicatedName =
                 (\oldNames ->
                     if Set.member newName oldNames then
                         Err newName
+
                     else
                         Ok <| Set.insert newName oldNames
                 )
@@ -183,7 +171,7 @@ unwrapFold branch parentId ({ skip, only } as configs) ( queue, acc ) =
                 ( subQueue, Success result ) ->
                     let
                         newQueues =
-                            List.map (\caps -> Queue ( caps, subQueue )) caps
+                            List.map (\caps_ -> Queue ( caps_, subQueue )) caps
                                 |> Array.fromList
                                 |> Array.append result.queues
                     in

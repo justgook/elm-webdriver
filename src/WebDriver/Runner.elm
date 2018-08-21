@@ -1,4 +1,4 @@
-module WebDriver.Runner exposing (Configuration, Reporter(..), TestRunner, configuration, run, runWith)
+module WebDriver.Runner exposing (run, runWith, configuration, TestRunner, Configuration, Reporter(..))
 
 {-|
 
@@ -11,11 +11,11 @@ import Dict exposing (Dict)
 import Json.Decode as Json
 import Json.Encode
 import NestedSet exposing (NestedSet)
-import Platform exposing (programWithFlags)
+import Platform exposing (worker)
 import Task exposing (Task)
 import WebDriver exposing (Test)
 import WebDriver.Helper.Capabilities as Capabilities exposing (Capabilities)
-import WebDriver.Internal as Internal exposing (Expectation(..), Node(..), Parsed(..), Queue(Queue), TestStatus(..), unwrap)
+import WebDriver.Internal as Internal exposing (Expectation(..), Node(..), Parsed(..), Queue(..), TestStatus(..), unwrap)
 import WebDriver.Internal.Browser as WebDriver exposing (browser)
 import WebDriver.Internal.Render as Render
 import WebDriver.Step as WebDriver exposing (Functions)
@@ -68,7 +68,7 @@ all that data can be overriding with corresponding flags
 -}
 runWith : Configuration -> Test -> PlatformProgramWithFlags
 runWith configs suite =
-    programWithFlags
+    worker
         { init = init configs suite
         , update = update
         , subscriptions = always Sub.none
@@ -115,19 +115,23 @@ type alias TestCoordinate =
     { testId : Int, queueId : Int }
 
 
+render : Reporter -> { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> Render.LastResult -> Cmd msg
 render reporter =
     case reporter of
         DotReporter ->
             Render.renderDot
 
         DotLiveReporter ->
-            Render.renderDotLive
+            -- Render.renderDotLive
+            Render.renderDot
 
         SpecReporter ->
-            Render.renderSpec
+            -- Render.renderSpec
+            Render.renderDot
 
         SpecLiveReporter ->
-            Render.renderSpecLive
+            -- Render.renderSpecLive
+            Render.renderDot
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -136,8 +140,15 @@ update (TestResult { testId, queueId } result) model =
         newModel =
             { model | data = NestedSet.update testId (itemStatusDone queueId result) model.data }
 
+        status =
+            if result == Pass then
+                Render.Good
+
+            else
+                Render.Bad
+
         renderCmd =
-            render model.configuration.reporter newModel
+            render model.configuration.reporter newModel status
     in
     case result of
         Fail True err ->
@@ -161,11 +172,11 @@ update (TestResult { testId, queueId } result) model =
 init : Configuration -> Test -> Json.Value -> ( Model, Cmd Message )
 init configs suite flags =
     let
-        ({ capabilities } as configuration) =
+        ({ capabilities } as newConfig) =
             configurationInit configs flags
 
         model =
-            { configuration = configuration
+            { configuration = newConfig
             , data = NestedSet.empty
             , onlyMode = False
             , queues = Array.empty
@@ -195,7 +206,7 @@ init configs suite flags =
                     { initialModel | data = newData }
 
                 cmd =
-                    render model.configuration.reporter resultModel
+                    render model.configuration.reporter resultModel Render.Init
             in
             ( resultModel, [ cmd ] ++ cmds2 |> Cmd.batch )
 
@@ -334,8 +345,10 @@ initItemQueueStatus onlyMode queueId =
                         (always
                             (if skip then
                                 Just Skip
+
                              else if onlyMode && not only then
                                 Just OnlyModeSkip
+
                              else
                                 Just InQueue
                             )
@@ -380,6 +393,7 @@ returnIf : a -> Bool -> Maybe a
 returnIf a b =
     if b then
         Just a
+
     else
         Nothing
 

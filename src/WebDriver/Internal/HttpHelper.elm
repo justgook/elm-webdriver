@@ -50,7 +50,7 @@ responseToEnglish response =
     "I tried to connect to "
         ++ response.url
         ++ " but the response gave me the error code: "
-        ++ toString response.status.code
+        ++ String.fromInt response.status.code
         ++ " which is known as: \""
         ++ response.status.message
         ++ "\"."

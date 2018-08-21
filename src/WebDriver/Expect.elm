@@ -1,26 +1,11 @@
-module WebDriver.Expect
-    exposing
-        ( Expectation
-        , FloatingPointTolerance(Absolute, AbsoluteOrRelative, Relative)
-        , all
-        , atLeast
-        , atMost
-        , equal
-        , equalDicts
-        , equalLists
-        , equalSets
-        , err
-        , fail
-        , false
-        , greaterThan
-        , lessThan
-        , notEqual
-        , notWithin
-        , onFail
-        , pass
-        , true
-        , within
-        )
+module WebDriver.Expect exposing
+    ( Expectation, equal, notEqual, all
+    , lessThan, atMost, greaterThan, atLeast
+    , FloatingPointTolerance(..), within, notWithin
+    , true, false
+    , err, equalLists, equalDicts, equalSets
+    , pass, fail, onFail
+    )
 
 {-| A library to create `Expectation`s, which describe a claim to be tested.
 
@@ -86,8 +71,9 @@ Let's say we want to figure out if our estimation of pi is precise enough.
 
 Is `3.14` within `0.01` of `pi`? Yes, because `3.13 < pi < 3.15`.
 
-    test "3.14 approximates pi with absolute precision" <| \_ ->
-        3.14 |> Expect.within (Absolute 0.01) pi
+    test "3.14 approximates pi with absolute precision" <|
+        \_ ->
+            3.14 |> Expect.within (Absolute 0.01) pi
 
 
 ### Relative Tolerance
@@ -170,6 +156,7 @@ equal =
     -- Passes because (11 /= 100) is True
     90 + 10
         |> Expect.notEqual 11
+
 
 
     -- Fails because (100 /= 100) is False
@@ -322,6 +309,27 @@ type FloatingPointTolerance
     | AbsoluteOrRelative Float Float
 
 
+stringifyResult result =
+    case result of
+        Ok a ->
+            "Ok" ++ "(Find what goes here)"
+
+        Err e ->
+            "Err" ++ "(Find what goes here)"
+
+
+stringifyTolerance tolerance =
+    case tolerance of
+        Absolute a ->
+            "Absolute" ++ String.fromFloat a
+
+        Relative a ->
+            "Relative" ++ String.fromFloat a
+
+        AbsoluteOrRelative a b ->
+            "AbsoluteOrRelative " ++ String.fromFloat a ++ " " ++ String.fromFloat b
+
+
 {-| Passes if the second and third arguments are equal within a tolerance
 specified by the first argument. This is intended to avoid failing because of
 minor inaccuracies introduced by floating point arithmetic.
@@ -352,7 +360,7 @@ which argument is which:
 within : FloatingPointTolerance -> Float -> Float -> Expectation
 within tolerance a b =
     nonNegativeToleranceError tolerance "within" <|
-        compareWith ("Expect.within " ++ toString tolerance)
+        compareWith ("Expect.within " ++ stringifyTolerance tolerance)
             (withinCompare tolerance)
             a
             b
@@ -363,8 +371,8 @@ within tolerance a b =
 notWithin : FloatingPointTolerance -> Float -> Float -> Expectation
 notWithin tolerance a b =
     nonNegativeToleranceError tolerance "notWithin" <|
-        compareWith ("Expect.notWithin " ++ toString tolerance)
-            (\a b -> not <| withinCompare tolerance a b)
+        compareWith ("Expect.notWithin " ++ stringifyTolerance tolerance)
+            (\a_ b_ -> not <| withinCompare tolerance a_ b_)
             a
             b
 
@@ -393,6 +401,7 @@ true : String -> Bool -> Expectation
 true message bool =
     if bool then
         pass
+
     else
         fail message
 
@@ -421,6 +430,7 @@ false : String -> Bool -> Expectation
 false message bool =
     if bool then
         fail message
+
     else
         pass
 
@@ -459,7 +469,7 @@ err result =
         Ok _ ->
             "Expect.err"
                 ++ "Err _"
-                ++ toString result
+                ++ stringifyResult result
                 |> Task.fail
 
         Err _ ->
@@ -497,22 +507,23 @@ equalLists : List a -> List a -> Expectation
 equalLists expected_ actual_ =
     if expected_ == actual_ then
         pass
-    else
-        let
-            expected =
-                List.map toString expected_
 
-            actual =
-                List.map toString actual_
-        in
-        listDiffToString 0
-            "Expect.equalLists"
-            { expected = expected
-            , actual = actual
-            }
-            { originalExpected = expected
-            , originalActual = actual
-            }
+    else
+        -- let
+        --     expected =
+        --         List.map toString expected_
+        --     actual =
+        --         List.map toString actual_
+        -- in
+        -- listDiffToString 0
+        --     "Expect.equalLists"
+        --     { expected = expected
+        --     , actual = actual
+        --     }
+        --     { originalExpected = expected
+        --     , originalActual = actual
+        --     }
+        "Lists not equal"
             |> Task.fail
 
 
@@ -547,11 +558,13 @@ equalDicts : Dict comparable a -> Dict comparable a -> Expectation
 equalDicts expected actual =
     if Dict.toList expected == Dict.toList actual then
         pass
+
     else
         let
             differ dict k v diffs =
                 if Dict.get k dict == Just v then
                     diffs
+
                 else
                     ( k, v ) :: diffs
 
@@ -595,6 +608,7 @@ equalSets : Set comparable -> Set comparable -> Expectation
 equalSets expected actual =
     if Set.toList expected == Set.toList actual then
         pass
+
     else
         let
             missingKeys =
@@ -709,6 +723,7 @@ all list query =
         result =
             if List.isEmpty list then
                 Task.fail "Expect.all was given an empty list. You must make at least one expectation to have a valid test!"
+
             else
                 allHelp list query
     in
@@ -735,7 +750,7 @@ allHelp list query =
 
 reportFailure : String -> String -> String -> Expectation
 reportFailure comparison expected actual =
-    verticalBar comparison (toString expected) (toString actual)
+    verticalBar comparison ("\"" ++ expected ++ "\"") ("\"" ++ actual ++ "\"")
         |> Task.fail
 
 
@@ -766,16 +781,13 @@ compareWith =
     testWith (\description e a -> verticalBar description e a)
 
 
-
--- testWith : (String -> String -> Reason) -> String -> (a -> b -> Bool) -> b -> a -> Expectation
-
-
 testWith : (String -> String -> String -> String) -> String -> (a -> b -> Bool) -> b -> a -> Expectation
 testWith makeReason label runTest expected actual =
     if runTest actual expected then
         pass
+
     else
-        makeReason label (toString expected) (toString actual)
+        makeReason label "expected" "actual"
             |> Task.fail
 
 
@@ -786,11 +798,11 @@ testWith makeReason label runTest expected actual =
 absolute : FloatingPointTolerance -> Float
 absolute tolerance =
     case tolerance of
-        Absolute absolute ->
-            absolute
+        Absolute absolute_ ->
+            absolute_
 
-        AbsoluteOrRelative absolute _ ->
-            absolute
+        AbsoluteOrRelative absolute_ _ ->
+            absolute_
 
         _ ->
             0
@@ -799,11 +811,11 @@ absolute tolerance =
 relative : FloatingPointTolerance -> Float
 relative tolerance =
     case tolerance of
-        Relative relative ->
-            relative
+        Relative relative_ ->
+            relative_
 
-        AbsoluteOrRelative _ relative ->
-            relative
+        AbsoluteOrRelative _ relative_ ->
+            relative_
 
         _ ->
             0
@@ -813,10 +825,13 @@ nonNegativeToleranceError : FloatingPointTolerance -> String -> Expectation -> E
 nonNegativeToleranceError tolerance name result =
     if absolute tolerance < 0 && relative tolerance < 0 then
         Task.fail ("Expect." ++ name ++ " was given negative absolute and relative tolerances")
+
     else if absolute tolerance < 0 then
         Task.fail ("Expect." ++ name ++ " was given a negative absolute tolerance")
+
     else if relative tolerance < 0 then
         Task.fail ("Expect." ++ name ++ " was given a negative relative tolerance")
+
     else
         result
 
@@ -842,21 +857,21 @@ listDiffToString index description { expected, actual } originals =
             , "This should never happen!"
             , "Please report this bug to https://github.com/elm-community/elm-test/issues - and include these lists: "
             , "\n"
-            , toString originals.originalExpected
+            , "toString originals.originalExpected"
             , "\n"
-            , toString originals.originalActual
+            , "toString originals.originalActual"
             ]
                 |> String.join ""
 
         ( first :: _, [] ) ->
             verticalBar (description ++ " was shorter than")
-                (toString originals.originalExpected)
-                (toString originals.originalActual)
+                "(toString originals.originalExpected)"
+                "(toString originals.originalActual)"
 
         ( [], first :: _ ) ->
             verticalBar (description ++ " was longer than")
-                (toString originals.originalExpected)
-                (toString originals.originalActual)
+                "(toString originals.originalExpected)"
+                "(toString originals.originalActual)"
 
         ( firstExpected :: restExpected, firstActual :: restActual ) ->
             if firstExpected == firstActual then
@@ -867,14 +882,15 @@ listDiffToString index description { expected, actual } originals =
                     , actual = restActual
                     }
                     originals
+
             else
                 -- We found elements that differ; fail!
                 String.join ""
                     [ verticalBar description
-                        (toString originals.originalExpected)
-                        (toString originals.originalActual)
+                        "(toString originals.originalExpected)"
+                        "(toString originals.originalActual)"
                     , "\n\nThe first diff is at index "
-                    , toString index
+                    , String.fromInt index
                     , ": it was `"
                     , firstActual
                     , "`, but `"

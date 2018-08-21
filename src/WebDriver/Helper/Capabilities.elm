@@ -52,17 +52,12 @@ encode caps =
             baseEncode (always []) data
 
         ChromeCapabilities data ->
-            baseEncode (always []) data
+            baseEncode encodeChromeOptions data
 
 
 baseEncode : ({ a | browserName : String, version : String } -> List ( String, Encode.Value )) -> { a | browserName : String, version : String } -> Encode.Value
 baseEncode addition data =
     let
-        --   [ ( "browserName", Encode.string "Safari" )
-        -- , ( "platformName", Encode.string "iOS" )
-        -- , ( "deviceName", Encode.string "iPhone Simulator" )
-        -- , ( "automationName", Encode.string "XCUITest" )
-        -- , ( "javascriptEnabled", Encode.bool data.javascriptEnabled )
         result =
             [ ( "browserName", Encode.string data.browserName )
             , ( "version", Encode.string data.version )
@@ -70,6 +65,15 @@ baseEncode addition data =
                 ++ addition data
     in
     Encode.object [ ( "desiredCapabilities", Encode.object result ) ]
+
+
+encodeChromeOptions : { b | chromeOptions : { a | args : List String } } -> List ( String, Encode.Value )
+encodeChromeOptions { chromeOptions } =
+    [ ( "chromeOptions", Encode.object [ ( "args", Encode.list Encode.string chromeOptions.args ) ] ) ]
+
+
+
+-- "chromeOptions":{ "args": ["--headless"]}
 
 
 {-| Default capabilities
@@ -129,66 +133,3 @@ withVersion version caps =
 
         ChromeCapabilities data ->
             ChromeCapabilities { data | version = version }
-
-
-
---   "desiredCapabilities": {
---       "browserName": "chrome",
---       "chromeOptions": {
---          "androidPackage": "com.google.android.apps.chrome",
---          "args": [  ],
---          "extensions": [  ],
---          "prefs": {
---             "profile.content_settings.exceptions.fullscreen": {
---                "172.31.18.18": {
---                   "setting": 1
---                }
---             }
---          }
---       },
---       "javascriptEnabled": true,
---       "platform": "ANY",
---       "version": ""
---    }
--- }
--- {
---   "desiredCapabilities":
--- 	{
---   		"browserName": "chrome",
---   		"version": "",
---   		"platform": "ANY",
---   		"javascriptEnabled": false,
---   		"takesScreenshot": false,
---   		"handlesAlerts": false,
---   		"databaseEnabled": false,
---   		"locationContextEnabled": false,
---   		"applicationCacheEnabled": false,
---   		"browserConnectionEnabled": true,
---   		"cssSelectorsEnabled": false,
---   		"webStorageEnabled": false,
---   		"rotatable": false,
---   		"acceptSslCerts": false,
---   		"nativeEvents": true,
---         "acceptInsecureCerts": false,
---         "proxy": {"proxyType":"direct"},
---         "chromeOptions":{ "args": ["--headless"]}
--- 	}
--- }
--- chromeOptions : ChromeOptions -> Capabilities -> Capabilities
--- chromeOptions (ChromeOptions options) (Capabilities caps) =
---     Capabilities
---         { caps
---             | chromeOptions =
---                 { -- androidPackage = "com.google.android.apps.chrome"
---                   -- ,
---                   args = options.args
---                 , extensions = options.extensions
---                 --  "prefs": {
---                 --     "profile.content_settings.exceptions.fullscreen": {
---                 --        "172.31.18.18": {
---                 --           "setting": 1
---                 --        }
---                 --     }
---                 --  }
---                 }
---         }

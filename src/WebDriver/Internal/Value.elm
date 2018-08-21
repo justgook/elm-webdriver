@@ -1,23 +1,10 @@
-module WebDriver.Internal.Value
-    exposing
-        ( Answer
-        , AnswerDecoder
-        , Cookie
-        , Element(..)
-        , Out
-        , Selector(..)
-        , WindowHandle(..)
-        , answerDecoder
-        , decodeAnswer
-        , jsonFromSelector
-        )
+module WebDriver.Internal.Value exposing (Answer, AnswerDecoder, Cookie, Element(..), Out, Selector(..), WindowHandle(..), answerDecoder, decodeAnswer, jsonFromSelector)
 
 {-| -}
 
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Json
-import Util.Tuple as Tuple
 import WebDriver.Internal.Value.Status as Status exposing (Status)
 import WebDriver.Internal.Value.Timeouts as Timeouts exposing (Timeouts)
 
@@ -166,7 +153,7 @@ decodeElement =
     Decode.field "ELEMENT" Decode.string
 
 
-decodeAnswer : Decode.Decoder a -> Decode.Decoder { sessionId : String, status : number, value : a }
+decodeAnswer : Decode.Decoder a -> Decode.Decoder { sessionId : String, status : Int, value : a }
 decodeAnswer decodeValue =
     let
         statusDecode =
@@ -181,8 +168,8 @@ decodeAnswer decodeValue =
                 case status of
                     0 ->
                         Decode.map2
-                            (\sessionId value ->
-                                { sessionId = sessionId
+                            (\sessionId_ value ->
+                                { sessionId = sessionId_
                                 , status = status
                                 , value = value
                                 }

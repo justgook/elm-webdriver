@@ -124,7 +124,7 @@ test untrimmedDesc thunk =
     thunk
         >> Task.andThen (\_ -> Task.succeed Internal.Pass)
         >> Task.onError (Internal.Fail False >> Task.succeed)
-        |> (\test -> Internal.UnitTest test)
+        |> (\test_ -> Internal.UnitTest test_)
         |> Internal.Labeled desc
 
 

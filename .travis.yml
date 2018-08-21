@@ -1,0 +1,43 @@
+sudo: false
+language: bash
+
+cache:
+  yarn: true
+  directories:
+    - tests/elm-stuff
+    - tests/node_modules
+    - ./yarn-cache
+
+matrix:
+    include:
+        - os: linux
+          env: ELM_VERSION=0.19.0 TARGET_NODE_VERSION=node ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-linux.tar.gz
+        - os: osx
+          env: ELM_VERSION=0.19.0 TARGET_NODE_VERSION=node ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-mac.tar.gz
+
+
+
+before_install:
+  - curl -L $ELM_BINARY | tar xz
+
+install:
+  - nvm install $TARGET_NODE_VERSION
+  - nvm use $TARGET_NODE_VERSION
+  - node --version
+  - npm --version
+  - ./elm --version
+  - cd tests && yarn
+  # - npm install -g elm@$ELM_VERSION
+  # - npm install -g elm-test@beta
+
+before_script: |
+  if ["$TRAVIS_OS_NAME" == "osx" ]; then PLATFORM=mac64; fi
+  if ["$TRAVIS_OS_NAME" == "linux" ]; then PLATFORM=linux64; fi
+  # platform options: linux32, linux64, mac64, win32
+  VERSION=$(curl http://chromedriver.storage.googleapis.com/LATEST_RELEASE)
+  curl http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_$PLATFORM.zip | tar -xf - -C .
+
+script:
+  # - elm-format --validate src/
+  - export PATH=$PATH:$PWD && cd tests && yarn test
+  # - yarn elm-analyse

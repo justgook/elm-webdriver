@@ -69,25 +69,24 @@ wrapper data =
     Json.object [ ( "actions", data ) ]
 
 
-keyEncoder : String -> String -> List KeyActivity -> Json.Value
-keyEncoder kind id actions =
-    let
-        encodeOne action =
-            case action of
-                KeyDown c ->
-                    --  {"type": "keyDown", "value": "\uE009"},
-                    Json.object [ ( "type", Json.string "keyDown" ), ( "value", c |> String.fromChar |> Json.string ) ]
 
-                KeyUp c ->
-                    --  {"type": "keyUp", "value": "\uE009"},
-                    Json.object [ ( "type", Json.string "keyUp" ), ( "value", c |> String.fromChar |> Json.string ) ]
-
-                KeyPause duration ->
-                    -- {"type": "pause", "duration": 500},
-                    Json.object [ ( "type", Json.string "pause" ), ( "duration", Json.int duration ) ]
-    in
-    Json.object
-        [ ( "type", Json.string kind )
-        , ( "id", Json.string id )
-        , ( "actions", List.map encodeOne actions |> Json.list )
-        ]
+-- keyEncoder : String -> String -> List KeyActivity -> Json.Value
+-- keyEncoder kind id actions =
+--     let
+--         encodeOne action =
+--             case action of
+--                 KeyDown c ->
+--                     --  {"type": "keyDown", "value": "\uE009"},
+--                     Json.object [ ( "type", Json.string "keyDown" ), ( "value", c |> String.fromChar |> Json.string ) ]
+--                 KeyUp c ->
+--                     --  {"type": "keyUp", "value": "\uE009"},
+--                     Json.object [ ( "type", Json.string "keyUp" ), ( "value", c |> String.fromChar |> Json.string ) ]
+--                 KeyPause duration ->
+--                     -- {"type": "pause", "duration": 500},
+--                     Json.object [ ( "type", Json.string "pause" ), ( "duration", Json.int duration ) ]
+--     in
+--     Json.object
+--         [ ( "type", Json.string kind )
+--         , ( "id", Json.string id )
+--         , ( "actions", List.map encodeOne actions |> Json.list )
+--         ]

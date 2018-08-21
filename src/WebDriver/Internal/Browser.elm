@@ -1,7 +1,4 @@
-module WebDriver.Internal.Browser
-    exposing
-        ( browser
-        )
+module WebDriver.Internal.Browser exposing (browser)
 
 import Json.Encode as Encode
 import Task exposing (Task)

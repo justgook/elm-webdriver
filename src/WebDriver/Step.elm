@@ -1,88 +1,52 @@
-module WebDriver.Step
-    exposing
-        ( Functions
-        , Host
-        , WithSession
-        , actions
-        , addCookie
-        , alertAccept
-        , alertDismiss
-        , alertText
-        , attribute
-        , back
-        , clear
-        , click
-        , close
-        , cookie
-        , cookies
-        , css
-        , deleteCookie
-        , deleteCookies
-        , element
-        , elementInElement
-        , elementScreenshot
-        , elements
-        , elementsInElement
-        , enabled
-        , execute
-        , executeAsync
-        , forward
-        , frame
-        , frameParent
-        , fullscreen
-        , functions
-        , getTimeouts
-        , getUrl
-        , getWindowRect
-        , maximize
-        , minimize
-        , promptText
-        , property
-        , rect
-        , refresh
-        , release
-        , screenshot
-        , selected
-        , sessionStart
-        , sessionStop
-        , setTimeouts
-        , setWindowRect
-        , status
-        , tagName
-        , text
-        , title
-        , url
-        , value
-        , window
-        , windowHandle
-        , windowHandles
-        )
+module WebDriver.Step exposing
+    ( url, getUrl
+    , element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot
+    , back, forward, refresh
+    , title, windowHandle, windowHandles, window, getWindowRect, setWindowRect, fullscreen, maximize, minimize, close, screenshot
+    , alertAccept, alertDismiss, alertText, promptText
+    , execute, executeAsync
+    , frameParent, frame
+    , getTimeouts, setTimeouts
+    , cookies, cookie, deleteCookies, deleteCookie, addCookie
+    , actions, release
+    , status
+    , Functions, Host, WithSession, functions, sessionStart, sessionStop
+    )
 
 {-| ##Location Navigation
+
 @docs url, getUrl
 
 ##Elements
-@docs element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property , css, rect, elementScreenshot
+
+@docs element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot
 
 ##History Navigation
+
 @docs back, forward, refresh
 
 ##Window
+
 @docs title, windowHandle, windowHandles, window, getWindowRect, setWindowRect, fullscreen, maximize, minimize, close, screenshot
 
 #Alerts
+
 @docs alertAccept, alertDismiss, alertText, promptText
 
 ##Inject a snippet of JavaScript
+
 @docs execute, executeAsync
 
 ##Frames / iFrames
+
 @docs frameParent, frame
 
 ##Timeouts
+
 @docs getTimeouts, setTimeouts
 
 ##Cookies
+
 @docs cookies, cookie, deleteCookies, deleteCookie, addCookie
 
 ##Actions
@@ -90,18 +54,21 @@ module WebDriver.Step
 @docs actions, release
 
 ##Webdriver Host info
+
 @docs status
 
 #Low level function
-@docs Functions,Host, WithSession, functions, sessionStart, sessionStop
+
+@docs Functions, Host, WithSession, functions, sessionStart, sessionStop
 
 -}
 
 import Http
+import Json.Decode exposing (Decoder)
 import Json.Encode as Json
 import Task exposing (Task)
 import WebDriver.Internal.HttpHelper as Http exposing (toTask)
-import WebDriver.Internal.Value as Value exposing (Answer, Cookie, Out, WindowHandle(Handle), answerDecoder, jsonFromSelector)
+import WebDriver.Internal.Value as Value exposing (Answer, Cookie, Out, WindowHandle(..), answerDecoder, jsonFromSelector)
 import WebDriver.Internal.Value.Action as Action
 import WebDriver.Internal.Value.Status as Status exposing (Status)
 import WebDriver.Internal.Value.Timeouts as Timeouts exposing (Timeouts)
@@ -109,8 +76,8 @@ import WebDriver.Step.Action exposing (Action)
 import WebDriver.Step.Element exposing (Element, Selector)
 
 
-type alias Step value =
-    Task String (Answer value)
+type alias Step data =
+    Task String (Answer data)
 
 
 {-| Configuration containing url to WebDriver host, used in
@@ -134,7 +101,7 @@ type alias WithSession =
 -}
 type alias Functions =
     { back : Step ()
-    , close : Step ()
+    , close : Step (List WindowHandle)
     , forward : Step ()
     , getTimeouts : Step Timeouts
     , getUrl : Step String
@@ -148,7 +115,7 @@ type alias Functions =
     , window : WindowHandle -> Step ()
     , fullscreen : Step ()
     , maximize : Step ()
-    , minimize : Step ()
+    , minimize : Step { height : Int, width : Int, x : Int, y : Int }
     , frameParent : Step ()
     , frame : Json.Value -> Step ()
     , element : Selector -> Step Element
@@ -189,12 +156,8 @@ type alias Functions =
 {-| -}
 functions : WithSession -> Functions
 functions options =
-    let
-        args =
-            { url = options.url }
-    in
     { url = \data -> url options data |> toTask
-    , status = status args |> toTask
+    , status = status { url = options.url } |> toTask
     , getUrl = getUrl options |> toTask
     , getTimeouts = getTimeouts options |> toTask
     , setTimeouts = \data -> setTimeouts options data |> toTask
@@ -234,14 +197,14 @@ functions options =
     , cookie = \name -> cookie options name |> toTask
     , deleteCookies = deleteCookies options |> toTask
     , deleteCookie = \data -> deleteCookie options data |> toTask
-    , addCookie = \name value -> addCookie options name value |> toTask
-    , promptText = \value -> promptText options value |> toTask
+    , addCookie = \name data -> addCookie options name data |> toTask
+    , promptText = \data -> promptText options data |> toTask
     , alertText = alertText options |> toTask
     , alertDismiss = alertDismiss options |> toTask
     , alertAccept = alertAccept options |> toTask
     , screenshot = screenshot options |> toTask
     , elementScreenshot = \elm -> elementScreenshot options elm |> toTask
-    , actions = \value -> actions options value |> toTask
+    , actions = \data -> actions options data |> toTask
     , release = release options |> toTask
     }
 
@@ -296,11 +259,11 @@ Configure the amount of time that a particular type of operation can execute for
 
 -}
 setTimeouts : WithSession -> Timeouts -> Out Timeouts
-setTimeouts settings value =
+setTimeouts settings data =
     Json.object
-        [ ( "script", Json.int value.script )
-        , ( "pageLoad", Json.int value.pageLoad )
-        , ( "implicit", Json.int value.implicit )
+        [ ( "script", Json.int data.script )
+        , ( "pageLoad", Json.int data.pageLoad )
+        , ( "implicit", Json.int data.implicit )
         ]
         |> Http.jsonBody
         |> (\body ->
@@ -389,10 +352,10 @@ windowHandles settings =
 
 {-| Close current window (and focus on an other window).
 -}
-close : WithSession -> Out ()
+close : WithSession -> Out (List WindowHandle)
 close settings =
     Http.delete (settings.url ++ "/session/" ++ settings.sessionId ++ "/window")
-        answerDecoder.empty
+        answerDecoder.windowHandles
 
 
 {-| Switching window will select the current top-level browsing context used as the target for all subsequent commands.
@@ -411,11 +374,11 @@ window settings (Handle handle) =
         answerDecoder.empty
 
 
-window_ : String -> WithSession -> Out ()
-window_ path settings =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/" ++ path)
+window_ : String -> Decoder a -> { b | sessionId : String, url : String } -> Http.Request a
+window_ path decoder settings =
+    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/window/" ++ path)
         Http.emptyBody
-        answerDecoder.empty
+        decoder
 
 
 {-| The Fullscreen Window command invokes the window manager-specific “full screen” operation,
@@ -429,7 +392,7 @@ and can hide browser UI elements such as toolbars.
 -}
 fullscreen : WithSession -> Out ()
 fullscreen =
-    window_ "fullscreen"
+    window_ "fullscreen" answerDecoder.empty
 
 
 {-| The Maximize Window command invokes the window manager-specific “maximize” operation,
@@ -438,16 +401,16 @@ This typically increases the window to the maximum available size without going 
 -}
 maximize : WithSession -> Out ()
 maximize =
-    window_ "maximize"
+    window_ "maximize" answerDecoder.empty
 
 
 {-| The Minimize Window command invokes the window manager-specific “minimize” operation,
 if any, on the window containing the current top-level browsing context.
 This typically hides the window in the system tray.
 -}
-minimize : WithSession -> Out ()
+minimize : WithSession -> Out { height : Int, width : Int, x : Int, y : Int }
 minimize =
-    window_ "minimize"
+    window_ "minimize" answerDecoder.decodeRect
 
 
 {-| The Get Window Rect command returns the size and position
@@ -514,10 +477,10 @@ elements settings selector =
 The located element will be returned as a `Element`.
 -}
 elementInElement : WithSession -> Selector -> Element -> Out Element
-elementInElement settings selector (Value.Element element) =
+elementInElement settings selector (Value.Element elem) =
     -- POST	/session/{session id}/element/{element id}/element	Find Element From Element
     Http.post
-        (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ element ++ "/element")
+        (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/element")
         (jsonFromSelector selector |> Http.jsonBody)
         answerDecoder.element
 
@@ -527,18 +490,18 @@ The located elements will be returned as a `List Element`.
 Elements should be returned in the order located in the DOM.
 -}
 elementsInElement : WithSession -> Selector -> Element -> Out (List Element)
-elementsInElement settings selector (Value.Element element) =
+elementsInElement settings selector (Value.Element elem) =
     -- POST	/session/{session id}/element/{element id}/elements	Find Elements From Element
     Http.post
-        (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ element ++ "/elements")
+        (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/elements")
         (jsonFromSelector selector |> Http.jsonBody)
         answerDecoder.elements
 
 
 requestElemntProp_ : String -> Value.AnswerDecoder a -> WithSession -> Element -> Out a
-requestElemntProp_ path decoder settings (Value.Element element) =
+requestElemntProp_ path decoder settings (Value.Element elem) =
     Http.get
-        (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ element ++ "/" ++ path)
+        (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/" ++ path)
         decoder
 
 
@@ -580,15 +543,15 @@ text =
 Returns a attribute value.
 -}
 attribute : WithSession -> String -> Element -> Out String
-attribute settings attr element =
-    requestElemntProp_ ("attribute/" ++ attr) answerDecoder.string settings element
+attribute settings attr elem =
+    requestElemntProp_ ("attribute/" ++ attr) answerDecoder.string settings elem
 
 
 {-| Get the value of an element’s property.
 -}
 property : WithSession -> String -> Element -> Out String
-property settings prop element =
-    requestElemntProp_ ("property/" ++ prop) answerDecoder.string settings element
+property settings prop elem =
+    requestElemntProp_ ("property/" ++ prop) answerDecoder.string settings elem
 
 
 {-| Get a css property from a DOM-element.
@@ -598,8 +561,8 @@ The return value is not formatted.
 
 -}
 css : WithSession -> String -> Element -> Out String
-css settings prop element =
-    requestElemntProp_ ("css/" ++ prop) answerDecoder.string settings element
+css settings prop elem =
+    requestElemntProp_ ("css/" ++ prop) answerDecoder.string settings elem
 
 
 {-| The Get Element Rect command returns the dimensions and coordinates of the given web element.
@@ -610,8 +573,8 @@ The returned value is a record with `x`, `y`, `width` and `height` properties.
 
 -}
 rect : WithSession -> Element -> Out { height : Int, width : Int, x : Int, y : Int }
-rect settings element =
-    requestElemntProp_ "rect" answerDecoder.decodeRect settings element
+rect settings elem =
+    requestElemntProp_ "rect" answerDecoder.decodeRect settings elem
 
 
 {-| The Take Element Screenshot command takes a screenshot of the visible region encompassed by the bounding rectangle of an element.
@@ -633,8 +596,8 @@ Other input way (touch events, mouse up/down ...) can be done by [`actions`](#ac
 
 -}
 click : WithSession -> Element -> Out ()
-click settings (Value.Element element) =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ element ++ "/click")
+click settings (Value.Element elem) =
+    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/click")
         Http.emptyBody
         answerDecoder.empty
 
@@ -642,8 +605,8 @@ click settings (Value.Element element) =
 {-| Clear a `TEXTAREA` or text `INPUT` element’s value.
 -}
 clear : WithSession -> Element -> Out ()
-clear settings (Value.Element element) =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ element ++ "/clear")
+clear settings (Value.Element elem) =
+    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/clear")
         Http.emptyBody
         answerDecoder.empty
 
@@ -654,20 +617,16 @@ WebdriverIO will take care of translating them into unicode characters.
 You’ll find all supported characters here. To do that, the value has to correspond to a key from the table.
 -}
 value : WithSession -> String -> Element -> Out ()
-value settings value (Value.Element element) =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ element ++ "/value")
+value settings data (Value.Element elem) =
+    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/value")
         (Json.object
             [ ( "value"
-              , Json.list [ Json.string value ]
+              , Json.list Json.string [ data ]
               )
             ]
             |> Http.jsonBody
         )
         answerDecoder.empty
-
-
-
--- POST	/session/{session id}/element/{element id}/value	Element Send Keys
 
 
 {-| Change focus to the parent context.
@@ -735,7 +694,7 @@ execute settings function args =
               , Json.string function
               )
             , ( "args"
-              , Json.list args
+              , Json.list identity args
               )
             ]
             |> Http.jsonBody
@@ -781,7 +740,7 @@ executeAsync settings function args =
               , Json.string function
               )
             , ( "args"
-              , Json.list args
+              , Json.list identity args
               )
             ]
             |> Http.jsonBody
@@ -831,14 +790,14 @@ Make sure you are on the page that should receive the cookie.
 You can’t set a cookie for an arbitrary page without being on that page.
 -}
 addCookie : WithSession -> String -> String -> Out ()
-addCookie settings name value =
+addCookie settings name data_ =
     let
         data =
             Json.object
                 [ ( "cookie"
                   , Json.object
                         [ ( "name", Json.string name )
-                        , ( "value", Json.string value )
+                        , ( "value", Json.string data_ )
                         ]
                   )
                 ]
@@ -877,9 +836,9 @@ alertText settings =
 {-| Keystrokes to send to the prompt() dialog.
 -}
 promptText : WithSession -> String -> Out ()
-promptText settings value =
+promptText settings data =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/alert/text")
-        (Json.object [ ( "text", Json.string value ) ] |> Http.jsonBody)
+        (Json.object [ ( "text", Json.string data ) ] |> Http.jsonBody)
         answerDecoder.empty
 
 
@@ -908,7 +867,7 @@ Each input source must have the following properties:
 actions : WithSession -> List Action -> Out ()
 actions settings action =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/actions")
-        (Json.object [ ( "actions", List.map Action.encode action |> Json.list ) ] |> Http.jsonBody)
+        (Json.object [ ( "actions", Json.list Action.encode action ) ] |> Http.jsonBody)
         answerDecoder.empty
 
 
