@@ -1,23 +1,35 @@
-sudo: false
-language: bash
+sudo: required
+addons:
+  chrome: stable
+
+language: node
 
 cache:
   yarn: true
   directories:
     - tests/elm-stuff
     - tests/node_modules
-    - ./yarn-cache
 
 matrix:
     include:
         - os: linux
-          env: ELM_VERSION=0.19.0 TARGET_NODE_VERSION=node ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-linux.tar.gz
+          env: |
+            ELM_VERSION=0.19.0
+            TARGET_NODE_VERSION=node
+            ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-linux.tar.gz
+            CHROMEDRIVER_PLATFORM=linux64
         - os: osx
-          env: ELM_VERSION=0.19.0 TARGET_NODE_VERSION=node ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-mac.tar.gz
+          env: |
+            ELM_VERSION=0.19.0
+            TARGET_NODE_VERSION=node
+            ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-mac.tar.gz
+            CHROMEDRIVER_PLATFORM=mac64
 
 
 
 before_install:
+  - curl -o- -L https://yarnpkg.com/install.sh | bash
+  - export PATH="$HOME/.yarn/bin:$PATH"
   - curl -L $ELM_BINARY | tar xz
 
 install:
@@ -25,19 +37,25 @@ install:
   - nvm use $TARGET_NODE_VERSION
   - node --version
   - npm --version
+  - yarn --version
   - ./elm --version
-  - cd tests && yarn
+  - export PATH=$PATH:$PWD
+  - cd tests
+  - yarn
+  - cd ..
   # - npm install -g elm@$ELM_VERSION
   # - npm install -g elm-test@beta
 
-before_script: |
-  if ["$TRAVIS_OS_NAME" == "osx" ]; then PLATFORM=mac64; fi
-  if ["$TRAVIS_OS_NAME" == "linux" ]; then PLATFORM=linux64; fi
-  # platform options: linux32, linux64, mac64, win32
-  VERSION=$(curl http://chromedriver.storage.googleapis.com/LATEST_RELEASE)
-  curl http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_$PLATFORM.zip | tar -xf - -C .
+before_script:
+  - VERSION=$(curl http://chromedriver.storage.googleapis.com/LATEST_RELEASE)
+  - curl -L -o chromedriver.zip  http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_$CHROMEDRIVER_PLATFORM.zip
+  - unzip chromedriver.zip
 
 script:
   # - elm-format --validate src/
-  - export PATH=$PATH:$PWD && cd tests && yarn test
+  - ./chromedriver &
+  - last_pid=$!
+  - cd tests
+  - yarn --cwd tests test
+  - kill -KILL $last_pid
   # - yarn elm-analyse
