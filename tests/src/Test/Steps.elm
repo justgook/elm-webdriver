@@ -3,7 +3,7 @@ module Test.Steps exposing (suite)
 import Json.Decode as Decode
 import Json.Encode as Json
 import Task
-import WebDriver as WebDriver exposing (describe, only, skip, test)
+import WebDriver as WebDriver exposing (describe, only, test)
 import WebDriver.Expect as Expect
 import WebDriver.Step.Element as Selector
 
@@ -52,18 +52,17 @@ suite =
                             |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
                             |> Task.andThen (.value >> text)
                             |> Task.andThen (.value >> Expect.equal "Hello World")
-                , skip <|
-                    test "elements" <|
-                        \{ url, elements, text } ->
-                            url mock
-                                |> Task.andThen (\_ -> "h1" |> Selector.css |> elements)
-                                |> Task.andThen
-                                    (.value
-                                        >> (List.head
-                                                >> Maybe.map (text >> Task.andThen (.value >> Expect.equal "Hello World"))
-                                                >> Maybe.withDefault (Task.fail "no elemment found")
-                                           )
-                                    )
+                , test "elements" <|
+                    \{ url, elements, text } ->
+                        url mock
+                            |> Task.andThen (\_ -> "h1" |> Selector.css |> elements)
+                            |> Task.andThen
+                                (.value
+                                    >> (List.head
+                                            >> Maybe.map (text >> Task.andThen (.value >> Expect.equal "Hello World"))
+                                            >> Maybe.withDefault (Task.fail "no elemment found")
+                                       )
+                                )
                 , test "selected" <|
                     \{ url, selected, element } ->
                         url form
@@ -246,11 +245,10 @@ suite =
             , test "status" <|
                 \{ url, status } ->
                     url mock |> Task.andThen (\_ -> status)
-            , skip <|
-                test "setTimeouts, getTimeouts" <|
-                    \{ url, getTimeouts, setTimeouts } ->
-                        url mock
-                            |> Task.andThen (\_ -> setTimeouts { implicit = 100, pageLoad = 100, script = 100 })
+            , test "setTimeouts, getTimeouts" <|
+                \{ url, getTimeouts, setTimeouts } ->
+                    url mock
+                        |> Task.andThen (\_ -> setTimeouts { implicit = 100, pageLoad = 100, script = 100 })
             , test "windowHandle, window" <|
                 \{ url, windowHandle, window } ->
                     url mock

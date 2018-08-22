@@ -1,6 +1,7 @@
 module WebDriver.Internal.Browser exposing (browser)
 
 import Json.Encode as Encode
+import Process
 import Task exposing (Task)
 import WebDriver.Internal exposing (Expectation(..))
 import WebDriver.Internal.HttpHelper as Http exposing (toTask)
@@ -12,19 +13,27 @@ browser driverUrl capabilities tests =
     let
         stop_ =
             stop driverUrl
+
+        restart =
+            sessionStart { url = driverUrl } capabilities
+                |> toTask
+                |> Task.andThen
+                    (\{ sessionId } ->
+                        SessionIdHandler sessionId
+                            |> Task.succeed
+                    )
+
+        exitOnError =
+            Task.onError
+                (\err ->
+                    ErrorHandler ("Problem with Webdriver host (" ++ err ++ ")")
+                        |> Task.succeed
+                )
     in
-    sessionStart { url = driverUrl } capabilities
-        |> toTask
-        |> Task.andThen
-            (\{ sessionId } ->
-                SessionIdHandler sessionId
-                    |> Task.succeed
-            )
-        |> Task.onError
-            (\err ->
-                ErrorHandler ("Problem with Webdriver host (" ++ err ++ ")")
-                    |> Task.succeed
-            )
+    restart
+        -- Retry after 3000ms if first connect is unsuccessful
+        |> Task.onError (\_ -> Process.sleep 3000 |> Task.andThen (always restart))
+        |> exitOnError
         |> Task.andThen
             (\result ->
                 case result of

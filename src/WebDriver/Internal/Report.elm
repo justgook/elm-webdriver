@@ -1,7 +1,9 @@
-module WebDriver.Internal.Render exposing (LastResult(..), renderDot)
+module WebDriver.Internal.Report exposing (LastResult(..), render)
 
 import Array exposing (Array)
 import Dict
+import Json.Decode as D
+import Json.Encode as E
 import NestedSet exposing (NestedSet)
 import WebDriver.Internal exposing (Expectation(..), Node(..), Queue(..), TestStatus(..))
 import WebDriver.Internal.Port as Port
@@ -17,8 +19,8 @@ type LastResult
     | Bad
 
 
-renderDot : { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> LastResult -> Cmd msg
-renderDot ({ queues, data, onlyMode } as input) lastResult =
+render : { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> LastResult -> Cmd msg
+render ({ queues, data, onlyMode } as input) lastResult =
     let
         formatError index error =
             let
@@ -27,8 +29,8 @@ renderDot ({ queues, data, onlyMode } as input) lastResult =
                         |> List.foldl
                             (\item ( acc, depth_ ) ->
                                 case item of
-                                    Text _ _ a ->
-                                        ( acc ++ String.repeat depth_ "   " ++ a ++ "\n", depth_ + 1 )
+                                    Text _ _ testText ->
+                                        ( acc ++ String.repeat depth_ "   " ++ ansi.cyan ++ testText ++ ansi.reset ++ "\n", depth_ + 1 )
 
                                     _ ->
                                         ( acc, depth_ )
@@ -38,7 +40,7 @@ renderDot ({ queues, data, onlyMode } as input) lastResult =
                 depthSting =
                     String.repeat depth "   "
             in
-            path ++ depthSting ++ replace "\n" ("\n" ++ depthSting) error
+            path ++ depthSting ++ replace "\n" (ansi.reset ++ "\n" ++ ansi.red ++ depthSting) (ansi.red ++ error ++ ansi.reset)
 
         replace a b c =
             String.split a c |> String.join b
@@ -98,7 +100,24 @@ renderDot ({ queues, data, onlyMode } as input) lastResult =
                 data
     in
     if result.firstRun then
-        Port.log ("\nRunning " ++ String.fromInt result.count ++ ", Skipping " ++ String.fromInt result.skipCount ++ " Tests: ")
+        Port.log
+            ("\n"
+                ++ ansi.green
+                ++ "Running: "
+                ++ ansi.reset
+                ++ ansi.cyan
+                ++ String.fromInt result.count
+                ++ ansi.reset
+                ++ ansi.green
+                ++ ", Skipping: "
+                ++ ansi.reset
+                ++ ansi.cyan
+                ++ String.fromInt result.skipCount
+                ++ ansi.reset
+                ++ ansi.green
+                ++ " Tests: "
+                ++ ansi.reset
+            )
 
     else if result.allDone then
         let
@@ -106,15 +125,30 @@ renderDot ({ queues, data, onlyMode } as input) lastResult =
                 result.errors |> List.length
         in
         Cmd.batch
-            [ Port.log
-                ("\n\nPassed: "
+            [ makeReport result.errors queues data |> Port.result
+            , Port.log
+                ("\n\n"
+                    ++ ansi.reset
+                    ++ ansi.green
+                    ++ "Passed: "
+                    ++ ansi.reset
+                    ++ ansi.cyan
                     ++ String.fromInt result.pass
+                    ++ ansi.reset
+                    ++ ansi.yellow
                     ++ "\nSkiped: "
+                    ++ ansi.reset
+                    ++ ansi.cyan
                     ++ String.fromInt result.skipCount
-                    ++ "\nFail: "
+                    ++ ansi.reset
+                    ++ ansi.red
+                    ++ "\nFail:   "
+                    ++ ansi.reset
+                    ++ ansi.cyan
                     ++ String.fromInt fail
-                    ++ "\n\n\u{001B}[31m"
-                    ++ (result.errors |> List.reverse |> String.join "\n\n")
+                    ++ ansi.reset
+                    ++ "\n\n"
+                    ++ (result.errors |> List.reverse |> String.join "\n")
                     ++ "\u{001B}[0m\n"
                 )
             , dotOrF
@@ -125,9 +159,82 @@ renderDot ({ queues, data, onlyMode } as input) lastResult =
         dotOrF lastResult
 
 
+makeReport errors queues data =
+    let
+        result =
+            data
+                |> NestedSet.indexedFoldr
+                    (\index value acc ->
+                        case value of
+                            Test { status } ->
+                                ( NestedSet.path index data |> List.foldl pathToStringAppender "", status |> Dict.values |> E.list statusToValue ) :: acc
+
+                            _ ->
+                                acc
+                    )
+                    []
+    in
+    result
+        |> (::) ( "errors", E.list E.string errors )
+        |> List.reverse
+        |> E.object
+
+
+statusToValue status =
+    case status of
+        Done (Fail critical {- Exit -} error) ->
+            E.string "fail"
+
+        Done Pass ->
+            E.string "pass"
+
+        Running ->
+            E.string "skip"
+
+        InQueue ->
+            E.string "skip"
+
+        OnlyModeSkip ->
+            E.string "skip"
+
+        Skip ->
+            E.string "skip"
+
+
+pathToStringAppender item itemString =
+    case item of
+        Text _ _ t ->
+            if itemString == "" then
+                t
+
+            else
+                itemString ++ " -> " ++ t
+
+        _ ->
+            itemString
+
+
+nodeEncoder : Array Queue -> Node -> E.Value
+nodeEncoder queues _ =
+    E.null
+
+
 dotOrF lastResult =
     if lastResult == Bad then
-        Port.log "\u{001B}[31mF\u{001B}[0m"
+        ansi.red ++ "F" ++ ansi.reset |> Port.log
 
     else
-        Port.log "."
+        ansi.green ++ "." ++ ansi.reset |> Port.log
+
+
+ansi =
+    { black = "\u{001B}[30m"
+    , red = "\u{001B}[31m"
+    , green = "\u{001B}[32m"
+    , yellow = "\u{001B}[33m"
+    , blue = "\u{001B}[34m"
+    , magenta = "\u{001B}[35m"
+    , cyan = "\u{001B}[36m"
+    , white = "\u{001B}[37m"
+    , reset = "\u{001B}[0m"
+    }

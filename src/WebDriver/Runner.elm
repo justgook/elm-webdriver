@@ -1,8 +1,8 @@
-module WebDriver.Runner exposing (run, runWith, configuration, TestRunner, Configuration, Reporter(..))
+module WebDriver.Runner exposing (run, runWith, configuration, TestRunner, Configuration)
 
 {-|
 
-@docs run, runWith, configuration, TestRunner, Configuration, Reporter
+@docs run, runWith, configuration, TestRunner, Configuration
 
 -}
 
@@ -12,12 +12,13 @@ import Json.Decode as Json
 import Json.Encode
 import NestedSet exposing (NestedSet)
 import Platform exposing (worker)
+import Process
 import Task exposing (Task)
 import WebDriver exposing (Test)
 import WebDriver.Helper.Capabilities as Capabilities exposing (Capabilities)
 import WebDriver.Internal as Internal exposing (Expectation(..), Node(..), Parsed(..), Queue(..), TestStatus(..), unwrap)
 import WebDriver.Internal.Browser as WebDriver exposing (browser)
-import WebDriver.Internal.Render as Render
+import WebDriver.Internal.Report as Report
 import WebDriver.Step as WebDriver exposing (Functions)
 
 
@@ -25,23 +26,6 @@ import WebDriver.Step as WebDriver exposing (Functions)
 -}
 type alias TestRunner =
     PlatformProgramWithFlags
-
-
-{-| How to output results, results will be pushed to `log` port as string,
-
-overriding with flag `reporter`
-
-  - `dot-live` - dot notation (each test is represented as `.` ) and updates status in live mode
-  - `dot` - same as do `dot-live` only for continuous integration servers, **not** updates status in live mode
-  - `spec-live` - print out all texts of tests / describe in nested list way and updates status in live mode
-  - `spec`- same as do `spec-live` only for continuous integration servers, **not** updates status in live mode
-
--}
-type Reporter
-    = DotReporter
-    | DotLiveReporter
-    | SpecReporter
-    | SpecLiveReporter
 
 
 type alias PlatformProgramWithFlags =
@@ -61,7 +45,6 @@ only allows You define Your own
 
   - `capabilities` - `Json.Value` - [more info](https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities)
   - `host` - `String` - WebDriver host
-  - `reporter` - [`Reporter`](#Reporter)
 
 all that data can be overriding with corresponding flags
 
@@ -80,7 +63,6 @@ runWith configs suite =
 type alias Configuration =
     { dirverHost : String
     , capabilities : Json.Value
-    , reporter : Reporter
     }
 
 
@@ -88,14 +70,12 @@ type alias Configuration =
 
   - `host` - `http://localhost:4444/wd/hub` - Default for [Selenium Standalone Server](https://www.seleniumhq.org/download/)
   - `capabilities` - plain Chrome
-  - [`reporter`](#Reporter) - `SpecLiveReporter`
 
 -}
 configuration : Configuration
 configuration =
     { dirverHost = "http://localhost:4444/wd/hub"
     , capabilities = Capabilities.encode Capabilities.default
-    , reporter = SpecReporter
     }
 
 
@@ -115,25 +95,6 @@ type alias TestCoordinate =
     { testId : Int, queueId : Int }
 
 
-render : Reporter -> { a | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> Render.LastResult -> Cmd msg
-render reporter =
-    case reporter of
-        DotReporter ->
-            Render.renderDot
-
-        DotLiveReporter ->
-            -- Render.renderDotLive
-            Render.renderDot
-
-        SpecReporter ->
-            -- Render.renderSpec
-            Render.renderDot
-
-        SpecLiveReporter ->
-            -- Render.renderSpecLive
-            Render.renderDot
-
-
 update : Message -> Model -> ( Model, Cmd Message )
 update (TestResult { testId, queueId } result) model =
     let
@@ -142,13 +103,13 @@ update (TestResult { testId, queueId } result) model =
 
         status =
             if result == Pass then
-                Render.Good
+                Report.Good
 
             else
-                Render.Bad
+                Report.Bad
 
         renderCmd =
-            render model.configuration.reporter newModel status
+            Report.render newModel status
     in
     case result of
         Fail True err ->
@@ -201,12 +162,21 @@ init configs suite flags =
 
                 ( cmds2, newData ) =
                     initRun initialModel
+                        |> Tuple.mapFirst
+                            (List.map
+                                (\( task, { queueId, testId } ) ->
+                                    -- Process.sleep 3000
+                                    --     |> Task.andThen (\_ -> task)
+                                    task
+                                        |> Task.perform (TestResult { testId = testId, queueId = queueId })
+                                )
+                            )
 
                 resultModel =
                     { initialModel | data = newData }
 
                 cmd =
-                    render model.configuration.reporter resultModel Render.Init
+                    Report.render resultModel Report.Init
             in
             ( resultModel, [ cmd ] ++ cmds2 |> Cmd.batch )
 
@@ -222,31 +192,6 @@ configurationInit configs flags =
                 |> Json.decodeValue (Json.field "host" Json.string)
                 |> Result.withDefault configs.dirverHost
 
-        reporter =
-            flags
-                |> Json.decodeValue
-                    (Json.field "reporter" Json.string
-                        |> Json.map
-                            (\value ->
-                                case value of
-                                    "dot" ->
-                                        DotReporter
-
-                                    "dot-live" ->
-                                        DotLiveReporter
-
-                                    "spec" ->
-                                        SpecReporter
-
-                                    "spec-live" ->
-                                        SpecLiveReporter
-
-                                    _ ->
-                                        configs.reporter
-                            )
-                    )
-                |> Result.withDefault configs.reporter
-
         capabilities =
             flags
                 |> Json.decodeValue (Json.field "capabilities" Json.value)
@@ -254,7 +199,6 @@ configurationInit configs flags =
     in
     { capabilities = capabilities
     , dirverHost = dirverHost
-    , reporter = reporter
     }
 
 
@@ -274,7 +218,10 @@ availableToRun data queueId itemId =
         |> Maybe.withDefault False
 
 
-initRun : { b | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> ( List (Cmd Message), NestedSet Node )
+
+-- initRun : { b | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> ( List (Cmd Message), NestedSet Node )
+
+
 initRun { data, queues, onlyMode } =
     queues
         |> Array.toIndexedList
@@ -297,8 +244,9 @@ initRun { data, queues, onlyMode } =
                                 (\testId ( tasks, modelWithRunning ) ->
                                     case NestedSet.get testId modelWithRunning of
                                         Just (Test { test, only, skip }) ->
-                                            ( (runOne caps.dirverHost caps.capabilities test
-                                                |> Task.perform (TestResult { testId = testId, queueId = queueId })
+                                            ( ( runOne caps.dirverHost caps.capabilities test
+                                              , { testId = testId, queueId = queueId }
+                                                -- |> Task.perform (TestResult { testId = testId, queueId = queueId })
                                               )
                                                 :: tasks
                                             , NestedSet.update testId (itemStatusRunning queueId) modelWithRunning

@@ -24,4 +24,4 @@ runInBrowsers =
 main : TestRunner
 main =
     runInBrowsers Test.Steps.suite
-        |> runWith { configuration | reporter = Runner.DotReporter }
+        |> runWith configuration

@@ -1,19 +1,12 @@
-module NestedSet
-    exposing
-        ( NestedSet
-        , depth
-        , empty
-        , get
-        , indexedFoldr
-        , insert
-        , insertAfter
-        , length
-        , map
-        , order
-        , path
-        , set
-        , update
-        )
+module NestedSet exposing
+    ( NestedSet
+    , empty
+    , length
+    , get, set, update, depth, path
+    , insert, insertAfter, order
+    , map, indexedFoldr
+    , encode, decode
+    )
 
 {-| The nested set model is a particular technique for representing nested sets (also known as trees or hierarchies) in relational databases.
 
@@ -47,6 +40,10 @@ module NestedSet
 
 @docs map, indexedFoldr
 
+#Serialization
+
+@docs encode, decode
+
 -}
 
 --`Nested set model`
@@ -54,6 +51,8 @@ module NestedSet
 --  http://mikehillyer.com/articles/managing-hierarchical-data-in-mysql/
 
 import Array exposing (Array)
+import Json.Decode as D
+import Json.Encode as E
 
 
 {-| Nested Set Model
@@ -66,6 +65,29 @@ type NestedSet a
 -}
 type Node a
     = Node { lft : Int, rgt : Int, parent_id : Int, value : a }
+
+
+{-| -}
+encode valueEncode data =
+    let
+        (NestedSet { tree }) =
+            order data
+    in
+    E.array
+        (\(Node { lft, rgt, parent_id, value }) ->
+            E.object
+                [ ( "lft", E.int lft )
+                , ( "rgt", E.int rgt )
+                , ( "parent_id", E.int parent_id )
+                , ( "value", valueEncode value )
+                ]
+        )
+        tree
+
+
+{-| -}
+decode valueDecoder ((NestedSet { tree }) as income) =
+    E.null
 
 
 {-| Return an empty Nested set.
@@ -114,6 +136,7 @@ insert index value ((NestedSet { tree }) as income) =
                             Nothing ->
                                 -- Debug.log "Imposible State - make me imposible"
                                 income
+
                     else
                         income
 
@@ -149,6 +172,7 @@ step : (a -> Bool) -> a -> ( Int, Maybe Int ) -> ( Int, Maybe Int )
 step predicate item ( index, lastMatch ) =
     if predicate item then
         ( index + 1, Just (index + 1) )
+
     else
         ( index + 1, lastMatch )
 
@@ -182,6 +206,7 @@ insertMapper_ input ({ rgt, lft } as data_) =
         applyIf condition fn value =
             if condition then
                 fn value
+
             else
                 value
 
@@ -292,6 +317,7 @@ indexedFoldr f acc ((NestedSet { tree, balanced }) as income) =
         |> Array.toIndexedList
         |> (if balanced then
                 identity
+
             else
                 List.sortBy (\( _, Node { lft } ) -> lft)
            )
@@ -304,6 +330,7 @@ order : NestedSet a -> NestedSet a
 order ((NestedSet { tree, balanced }) as income) =
     if balanced then
         income
+
     else
         NestedSet
             { tree =
