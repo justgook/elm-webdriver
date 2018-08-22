@@ -8,9 +8,6 @@
     "xhr2": "0.1.4"
   },
   "devDependencies": {},
-  "scripts": {
-    "test": "elm make ./src/Main.elm --optimize --output=bundle.js && node -e 'const XMLHttpRequest = require(\"xhr2\");const app = require(\"./bundle.js\").Elm.Main.init({}); app.ports.log.subscribe((a)=>process.stdout.write(a));app.ports.result.subscribe(({errors})=> {process.exitCode = errors.length > 7 ? 1 : 0;}); '"
-  },
   "author": "",
   "license": "ISC"
 }
