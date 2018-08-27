@@ -355,7 +355,11 @@ path index data =
                 Nothing ->
                     current
     in
-    path_ [] index data |> dropLast
+    path_ [] index data
+
+
+
+--|> dropLast
 
 
 dropLast : List a -> List a

@@ -1,68 +1,88 @@
 module WebDriver.Internal.Browser exposing (browser)
 
-import Json.Encode as Encode
+import Json.Encode as E
 import Process
 import Task exposing (Task)
-import WebDriver.Internal exposing (Expectation(..))
-import WebDriver.Internal.HttpHelper as Http exposing (toTask)
+import WebDriver.Internal exposing (Expectation)
+import WebDriver.Internal.HttpHelper as Http
 import WebDriver.Step exposing (Functions, functions, sessionStart, sessionStop)
 
 
-browser : String -> Encode.Value -> (Functions -> Task Never Expectation) -> Task Never Expectation
+browser : String -> E.Value -> (Functions -> Task Never (Result String ())) -> Task Never Expectation
 browser driverUrl capabilities tests =
     let
-        stop_ =
-            stop driverUrl
+        stop sessionId value result =
+            sessionStop { url = driverUrl, sessionId = sessionId }
+                |> Http.toTask
+                |> Task.andThen
+                    (\_ ->
+                        result
+                            |> Result.map (always value)
+                            |> Result.mapError
+                                (\error ->
+                                    { critical = False
+                                    , error = error
+                                    , capabilities = value
+                                    }
+                                )
+                            |> Task.succeed
+                    )
+                |> Task.onError
+                    (\err ->
+                        Task.succeed
+                            (Err { critical = True, error = "Problem STOP Webdriver host (" ++ err ++ ")", capabilities = value })
+                    )
 
         restart =
             sessionStart { url = driverUrl } capabilities
-                |> toTask
+                |> Http.toTask
                 |> Task.andThen
-                    (\{ sessionId } ->
-                        SessionIdHandler sessionId
+                    (\{ sessionId, value } ->
+                        SessionIdHandler sessionId value
                             |> Task.succeed
                     )
 
-        exitOnError =
+        exitOnError value =
             Task.onError
                 (\err ->
-                    ErrorHandler ("Problem with Webdriver host (" ++ err ++ ")")
+                    ErrorHandler ("Problem START Webdriver host (" ++ err ++ ")") value
                         |> Task.succeed
                 )
     in
     restart
-        -- Retry after 3000ms if first connect is unsuccessful
-        |> Task.onError (\_ -> Process.sleep 3000 |> Task.andThen (always restart))
-        |> exitOnError
+        -- Retry after 3ms if first connect is unsuccessful
+        |> Task.onError (\_ -> Process.sleep 3 |> Task.andThen (always restart))
+        |> exitOnError E.null
         |> Task.andThen
             (\result ->
                 case result of
-                    SessionIdHandler sessionId ->
+                    SessionIdHandler sessionId value ->
                         let
                             func =
                                 functions { url = driverUrl, sessionId = sessionId }
                         in
                         tests func
-                            |> Task.andThen (stop_ sessionId)
+                            |> Task.andThen (stop sessionId value)
 
-                    ErrorHandler err ->
-                        Fail True err
+                    ErrorHandler err value ->
+                        Err { critical = True, error = err, capabilities = value }
                             |> Task.succeed
             )
 
 
 type TaskStateHandler
-    = SessionIdHandler String
-    | ErrorHandler String
+    = SessionIdHandler String E.Value
+    | ErrorHandler String E.Value
 
 
-stop : String -> String -> Expectation -> Task Never Expectation
-stop driverUrl sessionId result =
-    sessionStop { url = driverUrl, sessionId = sessionId }
-        |> toTask
-        |> Task.andThen (\_ -> Task.succeed result)
-        |> Task.onError
-            (\err ->
-                Task.succeed
-                    (Fail True ("Problem with Webdriver host (" ++ err ++ ")"))
-            )
+
+-- stop : String -> String -> Expectation -> Task Never Expectation
+-- stop driverUrl sessionId result =
+--     sessionStop { url = driverUrl, sessionId = sessionId }
+--         |> toTask
+--         |> Task.andThen (\_ -> Task.succeed result)
+--         |> Task.onError
+--             (\err ->
+--                 Task.succeed
+--                     (Fail True ("Problem with Webdriver host (" ++ err ++ ")"))
+--             )

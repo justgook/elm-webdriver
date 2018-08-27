@@ -1,4 +1,4 @@
-module WebDriver.Internal exposing (BrowserData, ErrorLevel(..), Expectation(..), Node(..), Parsed(..), Queue(..), Test(..), TestStatus(..), duplicatedName, failNow, unwrap)
+module WebDriver.Internal exposing (BrowserData, ErrLevel(..), Expectation, Node(..), Queue(..), Test(..), TestStatus(..), duplicatedName, failNow)
 
 import Array exposing (Array)
 import Dict exposing (Dict)
@@ -9,44 +9,45 @@ import Task exposing (Task)
 import WebDriver.Step exposing (Functions)
 
 
-type Test
-    = UnitTest (Functions -> Task Never Expectation)
-    | Browser (List BrowserData) Test
+type Test browserInfo
+    = UnitTest (Functions -> Task Never (Result String ()))
+    | Browser (List browserInfo) (Test browserInfo)
       -- | FuzzTest (Random.Seed -> Int -> List Expectation)
-    | Labeled String Test
-    | Skipped Test
-    | Only Test
-    | Batch (List Test)
-    | ParseError String
+    | Labeled String (Test browserInfo)
+    | Skipped (Test browserInfo)
+    | Only (Test browserInfo)
+    | Batch (List (Test browserInfo))
+    | ParseErr String
 
 
 type alias BrowserData =
-    { name : String
-    , instances : Int
-    , dirverHost : String
+    { -- name : String
+      -- , instances : Int
+      -- , dirverHost : String
+      -- ,
+      url : String
     , capabilities : Json.Value
     }
 
 
-type ErrorLevel
+type ErrLevel
     = StopOne
     | StopAll
 
 
-type Expectation
-    = Pass
-    | Fail Bool {- Exit -} String
+type alias Expectation =
+    Result { critical : Bool, error : String, capabilities : Json.Value } Json.Value
 
 
-failNow : String -> Test
+failNow : String -> Test browserInfo
 failNow description =
-    ParseError description
+    ParseErr description
 
 
-duplicatedName : List Test -> Result String (Set String)
+duplicatedName : List (Test browserInfo) -> Result String (Set String)
 duplicatedName =
     let
-        names : Test -> List String
+        names : Test browserInfo -> List String
         names test =
             case test of
                 Labeled str _ ->
@@ -58,7 +59,7 @@ duplicatedName =
                 UnitTest _ ->
                     []
 
-                ParseError _ ->
+                ParseErr _ ->
                     []
 
                 Browser _ subTest ->
@@ -87,9 +88,8 @@ duplicatedName =
         >> List.foldl insertOrFail (Ok Set.empty)
 
 
-type Parsed
-    = Success { onlyMode : Bool, data : NestedSet Node, queues : Array Queue }
-    | Error String
+type alias Parsed =
+    Result String { onlyMode : Bool, data : NestedSet Node, queues : Array Queue }
 
 
 type Node
@@ -97,7 +97,7 @@ type Node
     | Test
         { skip : Bool
         , only : Bool
-        , test : Functions -> Task Never Expectation
+        , test : Functions -> Task Never (Result String ())
         , status : Dict Int TestStatus
         }
 
@@ -114,94 +114,79 @@ type Queue
     = Queue ( BrowserData, List Int )
 
 
-unwrap : List BrowserData -> Test -> Parsed
-unwrap capabilities current =
-    let
-        configs =
-            { capabilities = capabilities
-            , skip = False
-            , only = False
-            }
 
-        model =
-            ( [], Success { onlyMode = False, data = NestedSet.empty, queues = Array.empty } )
-    in
-    case unwrapFold current -1 configs model of
-        ( queue, Success result ) ->
-            let
-                newQueues =
-                    List.map (\caps -> Queue ( caps, queue )) capabilities
-                        |> Array.fromList
-                        |> Array.append result.queues
-            in
-            Success { result | queues = newQueues }
-
-        ( _, Error err ) ->
-            Error err
-
-
-unwrapFold : Test -> Int -> { a | only : Bool, skip : Bool } -> ( List Int, Parsed ) -> ( List Int, Parsed )
-unwrapFold branch parentId ({ skip, only } as configs) ( queue, acc ) =
-    case ( branch, acc ) of
-        ( _, Error a ) ->
-            ( queue, acc )
-
-        ( UnitTest test, Success ({ data } as model) ) ->
-            let
-                item =
-                    Test
-                        { skip = skip
-                        , only = only
-                        , test = test
-                        , status = Dict.empty
-                        }
-
-                itemId =
-                    NestedSet.length data
-
-                newData =
-                    NestedSet.insert parentId item data
-            in
-            ( queue ++ [ itemId ]
-            , Success { model | data = NestedSet.insert parentId item data }
-            )
-
-        ( Browser caps rest, Success { onlyMode, data } ) ->
-            case unwrapFold rest parentId configs ( [], acc ) of
-                ( subQueue, Success result ) ->
-                    let
-                        newQueues =
-                            List.map (\caps_ -> Queue ( caps_, subQueue )) caps
-                                |> Array.fromList
-                                |> Array.append result.queues
-                    in
-                    ( queue, Success { result | queues = newQueues } )
-
-                ( _, Error err ) ->
-                    ( [], Error err )
-
-        ( Labeled text rest, Success ({ onlyMode, data } as model) ) ->
-            let
-                item =
-                    Text skip only text
-
-                itemId =
-                    NestedSet.length data
-
-                newAcc =
-                    Success { model | data = NestedSet.insert parentId item data }
-            in
-            unwrapFold rest itemId configs ( queue, newAcc )
-
-        ( Skipped rest, Success { onlyMode, data } ) ->
-            unwrapFold rest parentId { configs | skip = True } ( queue, acc )
-
-        ( Only rest, Success model ) ->
-            unwrapFold rest parentId { configs | only = True } ( queue, Success { model | onlyMode = True } )
-
-        ( Batch listRest, Success { onlyMode, data } ) ->
-            listRest
-                |> List.foldl (\rest acc2 -> unwrapFold rest parentId configs acc2) ( queue, acc )
-
-        ( ParseError err, Success { onlyMode, data } ) ->
-            ( queue, Error err )
+-- unwrap : List BrowserData -> Test -> Result String { onlyMode : Bool, data : NestedSet Node, queues : Array Queue }
+-- unwrap capabilities current =
+--     let
+--         configs =
+--             { capabilities = capabilities
+--             , skip = False
+--             , only = False
+--             }
+--         model =
+--             ( [], Ok { onlyMode = False, data = NestedSet.empty, queues = Array.empty } )
+--     in
+--     case unwrapFold current -1 configs model of
+--         ( queue, Ok result ) ->
+--             let
+--                 newQueues =
+--                     List.map (\caps -> Queue ( caps, queue )) capabilities
+--                         |> Array.fromList
+--                         |> Array.append result.queues
+--             in
+--             Ok { result | queues = newQueues }
+--         ( _, Err err ) ->
+--             Err err
+-- unwrapFold : Test -> Int -> { a | only : Bool, skip : Bool } -> ( List Int, Parsed ) -> ( List Int, Parsed )
+-- unwrapFold branch parentId ({ skip, only } as configs) ( queue, acc ) =
+--     case ( branch, acc ) of
+--         ( _, Err a ) ->
+--             ( queue, acc )
+--         ( UnitTest test, Ok ({ data } as model) ) ->
+--             let
+--                 item =
+--                     Test
+--                         { skip = skip
+--                         , only = only
+--                         , test = test
+--                         , status = Dict.empty
+--                         }
+--                 itemId =
+--                     NestedSet.length data
+--                 newData =
+--                     NestedSet.insert parentId item data
+--             in
+--             ( queue ++ [ itemId ]
+--             , Ok { model | data = NestedSet.insert parentId item data }
+--             )
+--         ( Browser caps rest, Ok { onlyMode, data } ) ->
+--             case unwrapFold rest parentId configs ( [], acc ) of
+--                 ( subQueue, Ok result ) ->
+--                     let
+--                         newQueues =
+--                             List.map (\caps_ -> Queue ( caps_, subQueue )) caps
+--                                 |> Array.fromList
+--                                 |> Array.append result.queues
+--                     in
+--                     ( queue, Ok { result | queues = newQueues } )
+--                 ( _, Err err ) ->
+--                     ( [], Err err )
+--         ( Labeled text rest, Ok ({ onlyMode, data } as model) ) ->
+--             let
+--                 item =
+--                     Text skip only text
+--                 itemId =
+--                     NestedSet.length data
+--                 newAcc =
+--                     Ok { model | data = NestedSet.insert parentId item data }
+--             in
+--             unwrapFold rest itemId configs ( queue, newAcc )
+--         ( Skipped rest, Ok { onlyMode, data } ) ->
+--             unwrapFold rest parentId { configs | skip = True } ( queue, acc )
+--         ( Only rest, Ok model ) ->
+--             unwrapFold rest parentId { configs | only = True } ( queue, Ok { model | onlyMode = True } )
+--         ( Batch listRest, Ok { onlyMode, data } ) ->
+--             listRest
+--                 |> List.foldl (\rest acc2 -> unwrapFold rest parentId configs acc2) ( queue, acc )
+--         ( ParseErr err, Ok { onlyMode, data } ) ->
+--             ( queue, Err err )

@@ -212,7 +212,7 @@ functions options =
 {-| Creates a new session with the desired capabilities.
 and task result in info of created session as Json.Value
 
-> Note: Most of cases you don't need it runner will crates session for you and stop, after test is done
+> Note: Most of cases you don't need it runner will create session for you and stop, after test is done
 
 -}
 sessionStart : Host -> Json.Value -> Out Json.Value

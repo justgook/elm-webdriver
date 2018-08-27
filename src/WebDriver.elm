@@ -1,8 +1,8 @@
-module WebDriver exposing (Test, concat, describe, only, skip, test)
+module WebDriver exposing (Test, test, describe, skip, only, concat)
 
 {-|
 
-@docs Test,test, describe, skip, only, concat
+@docs Test, test, describe, skip, only, concat
 
 -}
 
@@ -18,8 +18,8 @@ it produces one or more scenarios execution agains [`WebDriver`](https://w3c.git
 See [`test`](#test) for some ways to create a `Test`.
 
 -}
-type alias Test =
-    Internal.Test
+type alias Test browserInfo =
+    Internal.Test browserInfo
 
 
 {-| Run each of the given tests.
@@ -27,10 +27,11 @@ type alias Test =
     concat [ testDecoder, testSorting ]
 
 -}
-concat : List Test -> Test
+concat : List (Test browserInfo) -> Test browserInfo
 concat tests =
     if List.isEmpty tests then
         Internal.failNow "This `concat` has no tests in it. Let's give it some!"
+
     else
         case Internal.duplicatedName tests of
             Err duped ->
@@ -70,7 +71,7 @@ an `only` inside a `skip`, it will also get skipped.
         ]
 
 -}
-only : Test -> Test
+only : Test browserInfo -> Test browserInfo
 only =
     Internal.Only
 
@@ -100,7 +101,7 @@ an `only` inside a `skip`, it will also get skipped.
         ]
 
 -}
-skip : Test -> Test
+skip : Test browserInfo -> Test browserInfo
 skip =
     Internal.Skipped
 
@@ -115,15 +116,15 @@ scenario agains [`WebDriver`](https://w3c.github.io/webdriver/) host.
             url "https://github.com"
 
 -}
-test : String -> (Functions -> Task String out) -> Test
+test : String -> (Functions -> Task String out) -> Test browserInfo
 test untrimmedDesc thunk =
     let
         desc =
             String.trim untrimmedDesc
     in
     thunk
-        >> Task.andThen (\_ -> Task.succeed Internal.Pass)
-        >> Task.onError (Internal.Fail False >> Task.succeed)
+        >> Task.andThen (\_ -> Task.succeed (Ok ()))
+        >> Task.onError (Err >> Task.succeed)
         |> (\test_ -> Internal.UnitTest test_)
         |> Internal.Labeled desc
 
@@ -145,7 +146,7 @@ Passing an empty list will result in a failing test, because you either made a
 mistake or are creating a placeholder.
 
 -}
-describe : String -> List Test -> Test
+describe : String -> List (Test browserInfo) -> Test browserInfo
 describe untrimmedDesc tests =
     let
         desc =
@@ -154,9 +155,11 @@ describe untrimmedDesc tests =
     if String.isEmpty desc then
         Internal.failNow
             "This `describe` has a blank description. Let's give it a useful one!"
+
     else if List.isEmpty tests then
         Internal.failNow
             ("This `describe " ++ desc ++ "` has no tests in it. Let's give it some!")
+
     else
         case Internal.duplicatedName tests of
             Err duped ->
@@ -167,5 +170,6 @@ describe untrimmedDesc tests =
                 if Set.member desc childrenNames then
                     Internal.failNow
                         ("The test '" ++ desc ++ "' contains a child test of the same name. Let's rename them so we know which is which.")
+
                 else
                     Internal.Labeled desc (Internal.Batch tests)

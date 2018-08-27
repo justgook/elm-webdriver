@@ -1,391 +1,267 @@
-module WebDriver.Runner exposing (run, runWith, configuration, TestRunner, Configuration)
-
-{-|
-
-@docs run, runWith, configuration, TestRunner, Configuration
-
--}
+module WebDriver.Runner exposing (Browsers, Expectation, Status(..), allDone, prepare, prepareNext, runOne, updateDone)
 
 import Array exposing (Array)
-import Dict exposing (Dict)
-import Json.Decode as Json
-import Json.Encode
+import Json.Encode as Json
 import NestedSet exposing (NestedSet)
-import Platform exposing (worker)
-import Process
 import Task exposing (Task)
 import WebDriver exposing (Test)
-import WebDriver.Helper.Capabilities as Capabilities exposing (Capabilities)
-import WebDriver.Internal as Internal exposing (Expectation(..), Node(..), Parsed(..), Queue(..), TestStatus(..), unwrap)
-import WebDriver.Internal.Browser as WebDriver exposing (browser)
-import WebDriver.Internal.Report as Report
-import WebDriver.Step as WebDriver exposing (Functions)
+import WebDriver.Internal exposing (Test(..))
+import WebDriver.Internal.Browser as WebDriver
+import WebDriver.Step exposing (Functions)
 
 
-{-| Platform.Program that can be runned as worker or cli application
--}
-type alias TestRunner =
-    PlatformProgramWithFlags
+type alias Executable =
+    Functions -> Task Never (Result String ())
 
 
-type alias PlatformProgramWithFlags =
-    Platform.Program Json.Value Model Message
-
-
-{-| A function which, run tests with fallback [`configuration`](#configuration),
-if flags no are defined (to define own use [`runWith`](#runWith) or define with flags)
--}
-run : Test -> TestRunner
-run suite =
-    runWith configuration suite
-
-
-{-| Same as [`run`](#run),
-only allows You define Your own
-
-  - `capabilities` - `Json.Value` - [more info](https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities)
-  - `host` - `String` - WebDriver host
-
-all that data can be overriding with corresponding flags
-
--}
-runWith : Configuration -> Test -> PlatformProgramWithFlags
-runWith configs suite =
-    worker
-        { init = init configs suite
-        , update = update
-        , subscriptions = always Sub.none
-        }
-
-
-{-| Configuration for [`runWith`](#runWith)
--}
-type alias Configuration =
-    { dirverHost : String
-    , capabilities : Json.Value
+type alias Browsers info =
+    { onlyMode : Bool
+    , tests :
+        Array (List { info : info, descId : Int, status : Status, exec : Executable })
     }
 
 
-{-| Default configuration that is used in [`run`](#run)
-
-  - `host` - `http://localhost:4444/wd/hub` - Default for [Selenium Standalone Server](https://www.seleniumhq.org/download/)
-  - `capabilities` - plain Chrome
-
--}
-configuration : Configuration
-configuration =
-    { dirverHost = "http://localhost:4444/wd/hub"
-    , capabilities = Capabilities.encode Capabilities.default
-    }
+type alias Expectation =
+    --Result { critical : Bool, error : String, capabilities : Json.Value } Json.Value
+    WebDriver.Internal.Expectation
 
 
-type alias Model =
-    { configuration : Configuration
-    , data : NestedSet Node
-    , onlyMode : Bool
-    , queues : Array Queue
-    }
+type Status
+    = Pass Json.Value
+    | Fail String Json.Value
+    | Skip
+    | Waiting
+    | Running
 
 
-type Message
-    = TestResult { testId : Int, queueId : Int } Expectation
-
-
-type alias TestCoordinate =
-    { testId : Int, queueId : Int }
-
-
-update : Message -> Model -> ( Model, Cmd Message )
-update (TestResult { testId, queueId } result) model =
-    let
-        newModel =
-            { model | data = NestedSet.update testId (itemStatusDone queueId result) model.data }
-
-        status =
-            if result == Pass then
-                Report.Good
-
-            else
-                Report.Bad
-
-        renderCmd =
-            Report.render newModel status
-    in
-    case result of
-        Fail True err ->
-            ( newModel, renderCmd )
-
-        _ ->
-            nextTest queueId newModel.queues newModel.data
-                |> Maybe.map
-                    (\{ caps, test, nextId } ->
-                        ( { newModel
-                            | data = NestedSet.update nextId (itemStatusRunning queueId) newModel.data
-                          }
-                        , runOne caps.dirverHost caps.capabilities test
-                            |> Task.perform (TestResult { testId = nextId, queueId = queueId })
-                        )
-                    )
-                |> Maybe.withDefault ( newModel, Cmd.none )
-                |> addCmd renderCmd
-
-
-init : Configuration -> Test -> Json.Value -> ( Model, Cmd Message )
-init configs suite flags =
-    let
-        ({ capabilities } as newConfig) =
-            configurationInit configs flags
-
-        model =
-            { configuration = newConfig
-            , data = NestedSet.empty
-            , onlyMode = False
-            , queues = Array.empty
-            }
-
-        browserData =
-            { name = "Chrome"
-            , instances = 8
-            , capabilities = capabilities
-            , dirverHost = configs.dirverHost
-            }
-    in
-    case unwrap [ browserData ] suite of
-        Success { onlyMode, data, queues } ->
-            let
-                initialModel =
-                    { model
-                        | data = data
-                        , queues = queues
-                        , onlyMode = onlyMode
-                    }
-
-                ( cmds2, newData ) =
-                    initRun initialModel
-                        |> Tuple.mapFirst
-                            (List.map
-                                (\( task, { queueId, testId } ) ->
-                                    -- Process.sleep 3000
-                                    --     |> Task.andThen (\_ -> task)
-                                    task
-                                        |> Task.perform (TestResult { testId = testId, queueId = queueId })
-                                )
-                            )
-
-                resultModel =
-                    { initialModel | data = newData }
-
-                cmd =
-                    Report.render resultModel Report.Init
-            in
-            ( resultModel, [ cmd ] ++ cmds2 |> Cmd.batch )
-
-        Error s ->
-            ( model, Cmd.none )
-
-
-configurationInit : Configuration -> Json.Value -> Configuration
-configurationInit configs flags =
-    let
-        dirverHost =
-            flags
-                |> Json.decodeValue (Json.field "host" Json.string)
-                |> Result.withDefault configs.dirverHost
-
-        capabilities =
-            flags
-                |> Json.decodeValue (Json.field "capabilities" Json.value)
-                |> Result.withDefault configs.capabilities
-    in
-    { capabilities = capabilities
-    , dirverHost = dirverHost
-    }
-
-
-availableToRun : NestedSet Node -> Int -> Int -> Bool
-availableToRun data queueId itemId =
-    NestedSet.get itemId data
-        |> Maybe.andThen
-            (\item ->
-                case item of
-                    Test { status, test } ->
-                        Dict.get queueId status
-                            |> Maybe.map ((==) InQueue)
-
-                    _ ->
-                        Nothing
+allDone (( desc, tests ) as model) =
+    tests.tests
+        |> Array.foldr
+            (\list acc ->
+                getFirst (\i -> i.status == Waiting || i.status == Running) list
+                    |> Maybe.map (always True)
+                    |> Maybe.withDefault acc
             )
-        |> Maybe.withDefault False
+            False
+        |> not
 
 
-
--- initRun : { b | data : NestedSet Node, onlyMode : Bool, queues : Array Queue } -> ( List (Cmd Message), NestedSet Node )
-
-
-initRun { data, queues, onlyMode } =
-    queues
-        |> Array.toIndexedList
-        |> List.foldl
-            (\( queueId, Queue ( caps, ids ) ) ( acc, model ) ->
-                let
-                    modelWithQueue =
-                        List.foldl
-                            (\id acc2 ->
-                                NestedSet.update id (initItemQueueStatus onlyMode queueId) acc2
-                            )
-                            model
-                            ids
-
-                    ( newCmds, finalModel ) =
-                        ids
-                            |> List.filter (availableToRun modelWithQueue queueId)
-                            |> List.take caps.instances
-                            |> List.foldl
-                                (\testId ( tasks, modelWithRunning ) ->
-                                    case NestedSet.get testId modelWithRunning of
-                                        Just (Test { test, only, skip }) ->
-                                            ( ( runOne caps.dirverHost caps.capabilities test
-                                              , { testId = testId, queueId = queueId }
-                                                -- |> Task.perform (TestResult { testId = testId, queueId = queueId })
-                                              )
-                                                :: tasks
-                                            , NestedSet.update testId (itemStatusRunning queueId) modelWithRunning
-                                            )
-
-                                        _ ->
-                                            -- It should never happent - but have no clue how to make it type safe
-                                            ( tasks, modelWithRunning )
-                                )
-                                ( [], modelWithQueue )
-                in
-                ( acc ++ newCmds, finalModel )
-            )
-            ( [], data )
+updateDone result =
+    statusFromResult result |> updateStatus
 
 
-itemStatusUpdater : ({ only : Bool, skip : Bool, test : Functions -> Task Never Expectation, status : Dict Int TestStatus } -> { only : Bool, skip : Bool, status : Dict Int TestStatus, test : Functions -> Task Never Expectation }) -> Node -> Node
-itemStatusUpdater updater item =
-    case item of
-        Test data ->
-            Test (updater data)
-
-        Text a b c ->
-            Text a b c
-
-
-itemStatusUpdater2 : TestStatus -> Int -> Node -> Node
-itemStatusUpdater2 status queueId item =
-    case item of
-        Test data ->
-            Test ((\a -> { a | status = Dict.update queueId (always (Just status)) a.status }) data)
-
-        Text a b c ->
-            Text a b c
-
-
-initItemQueueStatus : Bool -> Int -> Node -> Node
-initItemQueueStatus onlyMode queueId =
-    itemStatusUpdater
-        (\({ status, skip, only } as item) ->
-            { item
-                | status =
-                    Dict.update queueId
-                        (always
-                            (if skip then
-                                Just Skip
-
-                             else if onlyMode && not only then
-                                Just OnlyModeSkip
-
-                             else
-                                Just InQueue
-                            )
-                        )
-                        status
-            }
-        )
-
-
-itemStatusRunning : Int -> Node -> Node
-itemStatusRunning =
-    itemStatusUpdater2 Running
-
-
-itemStatusSkip : Int -> Node -> Node
-itemStatusSkip =
-    itemStatusUpdater2 Skip
-
-
-itemStatusOnlyModeSkip : Int -> Node -> Node
-itemStatusOnlyModeSkip =
-    itemStatusUpdater2 OnlyModeSkip
-
-
-itemStatusDone : Int -> Expectation -> Node -> Node
-itemStatusDone queueId result =
-    itemStatusUpdater
-        (\a ->
-            { a
-                | status =
-                    Dict.update queueId (always (Just (Done result))) a.status
-            }
-        )
-
-
-addCmd : Cmd msg -> ( model, Cmd msg ) -> ( model, Cmd msg )
-addCmd cmd ( model, oldCmd ) =
-    ( model, Cmd.batch [ cmd, oldCmd ] )
-
-
-returnIf : a -> Bool -> Maybe a
-returnIf a b =
-    if b then
-        Just a
-
-    else
-        Nothing
-
-
-nextTest : Int -> Array Queue -> NestedSet Node -> Maybe { caps : Internal.BrowserData, test : Functions -> Task Never Expectation, nextId : Int }
-nextTest queueId queues data =
+getFirst validation =
     let
-        validateId browserData id =
-            NestedSet.get id data
-                |> Maybe.andThen
-                    (\item ->
-                        case item of
-                            Test { status, test } ->
-                                Dict.get queueId status
-                                    |> Maybe.andThen ((==) InQueue >> returnIf { caps = browserData, test = test, nextId = id })
-
-                            _ ->
-                                Nothing
-                    )
-
-        searchForNext browserData ids =
-            case ids of
+        getFirst_ index list =
+            case list of
                 [] ->
                     Nothing
 
-                id :: [] ->
-                    validateId browserData id
+                x :: [] ->
+                    if validation x then
+                        Just { testId = index, task = x }
 
-                id :: rest ->
-                    case validateId browserData id of
-                        Nothing ->
-                            searchForNext browserData rest
+                    else
+                        Nothing
 
-                        result ->
-                            result
+                x :: xs ->
+                    if validation x then
+                        Just { testId = index, task = x }
+
+                    else
+                        getFirst_ (index + 1) xs
     in
-    case Array.get queueId queues of
-        Just (Queue ( browserData, ids )) ->
-            searchForNext browserData ids
+    getFirst_ 0
 
+
+prepareNext queueId (( desc, tests ) as model) =
+    tests.tests
+        |> Array.get queueId
+        |> Maybe.andThen (getFirst (.status >> (==) Waiting))
+        |> Maybe.map
+            (\({ testId, task } as cmd) ->
+                ( updateStatus Running queueId testId model
+                , { info = task.info
+                  , testId = testId
+                  , exec = task.exec
+                  }
+                )
+            )
+
+
+updateStatus status queueId testId ( desc, { onlyMode, tests } as data ) =
+    ( desc
+    , { data
+        | tests =
+            tests
+                |> updateArray queueId
+                    (updateList testId (\item -> { item | status = status }))
+      }
+    )
+
+
+getAt : Int -> List a -> Maybe a
+getAt idx xs =
+    if idx < 0 then
+        Nothing
+
+    else
+        List.head <| List.drop idx xs
+
+
+
+-- https://github.com/elm-community/list-extra/blob/8.0.0/src/List/Extra.elm
+
+
+updateList : Int -> (a -> a) -> List a -> List a
+updateList index fn list =
+    if index < 0 then
+        list
+
+    else
+        let
+            head =
+                List.take index list
+
+            tail =
+                List.drop index list
+        in
+        case tail of
+            x :: xs ->
+                head ++ fn x :: xs
+
+            _ ->
+                list
+
+
+updateArray : Int -> (a -> a) -> Array a -> Array a
+updateArray n f a =
+    let
+        element =
+            Array.get n a
+    in
+    case element of
         Nothing ->
-            Nothing
+            a
+
+        Just element_ ->
+            Array.set n (f element_) a
 
 
-runOne : String -> Json.Encode.Value -> (Functions -> Task Never Expectation) -> Task Never Expectation
-runOne driverUrl capabilities test =
-    WebDriver.browser driverUrl capabilities test
+statusFromResult r =
+    case r of
+        Err { error, capabilities } ->
+            Fail error capabilities
+
+        Ok capabilities ->
+            Pass capabilities
+
+
+prepare : info -> Test info -> Result String ( NestedSet String, Browsers info )
+prepare config suite =
+    unwrap config suite
+        |> Result.map
+            (\{ onlyMode, data, queues } ->
+                ( data
+                , { onlyMode = onlyMode
+                  , tests = queues
+                  }
+                )
+            )
+
+
+runOne : String -> Json.Value -> (Functions -> Task Never (Result String ())) -> Task Never Expectation
+runOne url capabilities test =
+    WebDriver.browser url capabilities test
+
+
+unwrap info current =
+    let
+        configs =
+            { info = info
+            , skip = False
+            , only = False
+            }
+
+        model =
+            ( [], Ok { onlyMode = False, data = NestedSet.empty, queues = Array.empty } )
+    in
+    case unwrapFold current -1 configs model of
+        ( queue, Ok result ) ->
+            let
+                newBrowsers =
+                    -- List.map (\caps -> ( caps, queue )) info
+                    [ queue ]
+                        |> Array.fromList
+                        |> Array.append result.queues
+            in
+            Ok { result | queues = newBrowsers }
+
+        ( _, Err err ) ->
+            Err err
+
+
+unwrapFold branch parentId ({ skip, only, info } as configs) ( queue, acc ) =
+    case ( branch, acc ) of
+        ( _, Err a ) ->
+            ( queue, acc )
+
+        ( UnitTest test, Ok ({ onlyMode, data } as model) ) ->
+            let
+                status =
+                    if onlyMode && not only then
+                        Skip
+
+                    else
+                        Waiting
+            in
+            ( queue ++ [ { descId = parentId, status = status, exec = test, info = info } ], Ok model )
+
+        ( Browser caps rest, Ok { onlyMode, data } ) ->
+            -- List.foldr (\a subAcc-> ) () caps
+            -- case unwrapFold rest parentId { configs | info = caps } ( [], acc ) of
+            --     ( subQueue, Ok result ) ->
+            --         let
+            --             newBrowsers =
+            --                 -- List.map (\caps_ -> ( caps_, subQueue )) caps
+            --                 [ subQueue ]
+            --                     |> Array.fromList
+            --                     |> Array.append result.queues
+            --         in
+            --         ( queue, Ok { result | queues = newBrowsers } )
+            --     ( _, Err err ) ->
+            ( [], Err "Not Implemented yet" )
+
+        ( Labeled text rest, Ok ({ onlyMode, data } as model) ) ->
+            let
+                itemId =
+                    NestedSet.length data
+
+                newAcc =
+                    Ok { model | data = NestedSet.insert parentId text data }
+            in
+            unwrapFold rest itemId configs ( queue, newAcc )
+
+        ( Skipped rest, Ok { onlyMode, data } ) ->
+            unwrapFold rest parentId { configs | skip = True } ( queue, acc )
+
+        ( Only rest, Ok model ) ->
+            let
+                newQueue =
+                    if model.onlyMode then
+                        queue
+
+                    else
+                        -- Update previous set statuses, as they had no clue that it is only mode,
+                        -- and do that only if that is first time when only mode kicks in
+                        queue
+                            |> List.map (\i -> { i | status = Skip })
+            in
+            unwrapFold rest parentId { configs | only = True } ( newQueue, Ok { model | onlyMode = True } )
+
+        ( Batch listRest, Ok { onlyMode, data } ) ->
+            listRest
+                |> List.foldl (\rest acc2 -> unwrapFold rest parentId configs acc2) ( queue, acc )
+
+        ( ParseErr err, Ok { onlyMode, data } ) ->
+            ( queue, Err err )

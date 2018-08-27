@@ -4,7 +4,7 @@ import Json.Decode as Decode
 import Json.Encode as Json
 import Task
 import WebDriver as WebDriver exposing (describe, only, test)
-import WebDriver.Expect as Expect
+import WebDriver.Assert as Assert
 import WebDriver.Step.Element as Selector
 
 
@@ -13,106 +13,115 @@ hostForCookies =
     "http://example.com"
 
 
-suite : WebDriver.Test
+suite : WebDriver.Test a
 suite =
     describe "WebDriver"
-        [ describe "Functions"
-            [ test "url / refresh / getUrl" <|
+        [ describe "Step"
+            [ test "url" <|
+                \{ url, getUrl, refresh } ->
+                    url blankPage
+            , test "getUrl" <|
+                \{ url, getUrl, refresh } ->
+                    url blankPage
+                        |> Task.andThen (\_ -> getUrl)
+                        |> Task.andThen (.value >> Assert.equal blankPage)
+            , test "title" <|
+                \{ url, title } ->
+                    url tiltlePage
+                        |> Task.andThen (\_ -> title)
+                        |> Task.andThen
+                            (.value
+                                >> (\value ->
+                                        String.contains "Hello" value
+                                            |> Assert.true ("Expected the title contains text Hello, but it is `" ++ value ++ "`")
+                                   )
+                            )
+            , test "refresh" <|
                 \{ url, getUrl, refresh } ->
                     url blankPage
                         |> Task.andThen (\_ -> refresh)
                         |> Task.andThen (\_ -> getUrl)
-                        |> Task.andThen
-                            (\({ value } as data) ->
-                                Expect.equal value blankPage
-                            )
-            , test "url / back / forward / getUrl" <|
+                        |> Task.andThen (.value >> Assert.equal blankPage)
+            , test "back" <|
+                \{ url, getUrl, back, forward } ->
+                    url blankPage
+                        |> Task.andThen (\_ -> url blankPage2)
+                        |> Task.andThen (\_ -> back)
+                        |> Task.andThen (\_ -> getUrl)
+                        |> Task.andThen (.value >> Assert.equal blankPage)
+            , test "forward" <|
                 \{ url, getUrl, back, forward } ->
                     url blankPage
                         |> Task.andThen (\_ -> back)
                         |> Task.andThen (\_ -> forward)
                         |> Task.andThen (\_ -> getUrl)
+                        |> Task.andThen (.value >> Assert.equal blankPage)
+            , test "element, text" <|
+                \{ url, element, text } ->
+                    url mock
+                        |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
+                        |> Task.andThen (.value >> text)
+                        |> Task.andThen (.value >> Assert.equal "Hello World")
+            , test "elements" <|
+                \{ url, elements, text } ->
+                    url mock
+                        |> Task.andThen (\_ -> "h1" |> Selector.css |> elements)
                         |> Task.andThen
-                            (\({ value } as data) ->
-                                Expect.equal value blankPage
+                            (.value
+                                >> (List.head
+                                        >> Maybe.map (text >> Task.andThen (.value >> Assert.equal "Hello World"))
+                                        >> Maybe.withDefault (Task.fail "no elemment found")
+                                   )
                             )
-            , test "url / title" <|
-                \{ url, title } ->
-                    url tiltlePage
-                        |> Task.andThen (\_ -> title)
-                        |> Task.andThen
-                            (\({ value } as data) ->
-                                String.contains "Hello" value
-                                    |> Expect.true ("Expected the title contains text Hello, but it is `" ++ value ++ "`")
-                            )
-            , describe "Element Properties"
-                [ test "element, text" <|
-                    \{ url, element, text } ->
-                        url mock
-                            |> Task.andThen (\_ -> "h1" |> Selector.css |> element)
-                            |> Task.andThen (.value >> text)
-                            |> Task.andThen (.value >> Expect.equal "Hello World")
-                , test "elements" <|
-                    \{ url, elements, text } ->
-                        url mock
-                            |> Task.andThen (\_ -> "h1" |> Selector.css |> elements)
-                            |> Task.andThen
-                                (.value
-                                    >> (List.head
-                                            >> Maybe.map (text >> Task.andThen (.value >> Expect.equal "Hello World"))
-                                            >> Maybe.withDefault (Task.fail "no elemment found")
-                                       )
-                                )
-                , test "selected" <|
-                    \{ url, selected, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']>#selected" |> Selector.css |> element)
-                            |> Task.andThen (.value >> selected)
-                            |> Task.andThen (.value >> Expect.equal True)
-                , test "enabled" <|
-                    \{ url, enabled, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']>#disabled" |> Selector.css |> element)
-                            |> Task.andThen (.value >> enabled)
-                            |> Task.andThen (.value >> Expect.equal False)
-                , test "tagName" <|
-                    \{ url, tagName, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
-                            |> Task.andThen (.value >> tagName)
-                            |> Task.andThen (.value >> Expect.equal "select")
-                , test "attribute" <|
-                    \{ url, attribute, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
-                            |> Task.andThen (.value >> attribute "name")
-                            |> Task.andThen (.value >> Expect.equal "select1")
-                , test "property" <|
-                    \{ url, property, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
-                            |> Task.andThen (.value >> property "name")
-                            |> Task.andThen (.value >> Expect.equal "select1")
-                , test "css" <|
-                    \{ url, css, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='text']" |> Selector.css |> element)
-                            |> Task.andThen (.value >> css "display")
-                            |> Task.andThen (.value >> Expect.equal "block")
-                , test "elementInElement" <|
-                    \{ url, elementInElement, selected, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
-                            |> Task.andThen (.value >> ("#selected" |> Selector.css |> elementInElement))
-                            |> Task.andThen (.value >> selected)
-                            |> Task.andThen (.value >> Expect.equal True)
-                , test "elementsInElement" <|
-                    \{ url, elementsInElement, element } ->
-                        url form
-                            |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
-                            |> Task.andThen (.value >> ("option" |> Selector.css |> elementsInElement))
-                            |> Task.andThen (.value >> List.length >> Expect.greaterThan 1)
-                ]
+            , test "selected" <|
+                \{ url, selected, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']>#selected" |> Selector.css |> element)
+                        |> Task.andThen (.value >> selected)
+                        |> Task.andThen (.value >> Assert.true "Element not selected")
+            , test "enabled" <|
+                \{ url, enabled, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']>#disabled" |> Selector.css |> element)
+                        |> Task.andThen (.value >> enabled)
+                        |> Task.andThen (.value >> Assert.false "Element sould be not enabled")
+            , test "tagName" <|
+                \{ url, tagName, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
+                        |> Task.andThen (.value >> tagName)
+                        |> Task.andThen (.value >> Assert.equal "select")
+            , test "attribute" <|
+                \{ url, attribute, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
+                        |> Task.andThen (.value >> attribute "name")
+                        |> Task.andThen (.value >> Assert.equal "select1")
+            , test "property" <|
+                \{ url, property, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
+                        |> Task.andThen (.value >> property "name")
+                        |> Task.andThen (.value >> Assert.equal "select1")
+            , test "css" <|
+                \{ url, css, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='text']" |> Selector.css |> element)
+                        |> Task.andThen (.value >> css "display")
+                        |> Task.andThen (.value >> Assert.equal "block")
+            , test "elementInElement" <|
+                \{ url, elementInElement, selected, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
+                        |> Task.andThen (.value >> ("#selected" |> Selector.css |> elementInElement))
+                        |> Task.andThen (.value >> selected)
+                        |> Task.andThen (.value >> Assert.true "Expect find selected element in select box")
+            , test "elementsInElement" <|
+                \{ url, elementsInElement, element } ->
+                    url form
+                        |> Task.andThen (\_ -> "[name='select1']" |> Selector.css |> element)
+                        |> Task.andThen (.value >> ("option" |> Selector.css |> elementsInElement))
+                        |> Task.andThen (.value >> List.length >> Assert.greaterThan 1)
             , test "setWindowRect, getWindowRect" <|
                 \{ url, setWindowRect, getWindowRect, element } ->
                     url form
@@ -121,10 +130,10 @@ suite =
                         |> Task.andThen
                             (.value
                                 >> (\{ height, width, x, y } ->
-                                        Expect.equal height 530
-                                            |> Task.andThen (\_ -> Expect.equal width 532)
-                                            |> Task.andThen (\_ -> Expect.equal x 33)
-                                            |> Task.andThen (\_ -> Expect.equal y 34)
+                                        Assert.equalInt height 530
+                                            |> Task.andThen (\_ -> Assert.equalInt width 532)
+                                            |> Task.andThen (\_ -> Assert.equalInt x 33)
+                                            |> Task.andThen (\_ -> Assert.equalInt y 34)
                                    )
                             )
             , test "rect" <|
@@ -132,7 +141,7 @@ suite =
                     url form
                         |> Task.andThen (\_ -> "[name='text']" |> Selector.css |> element)
                         |> Task.andThen (.value >> rect)
-                        |> Task.andThen (.value >> (\{ width } -> Expect.equal width 50))
+                        |> Task.andThen (.value >> (\{ width } -> Assert.equalInt width 50))
             , test "click" <|
                 \{ url, click, element, selected } ->
                     url form
@@ -140,7 +149,7 @@ suite =
                         |> Task.andThen (.value >> click)
                         |> Task.andThen (\_ -> "[name='checkbox']" |> Selector.css |> element)
                         |> Task.andThen (.value >> selected)
-                        |> Task.andThen (.value >> Expect.equal False)
+                        |> Task.andThen (.value >> Assert.false "By Clicking on checked box, expected get unselected status")
             , test "clear, value" <|
                 \{ url, clear, value, element, attribute } ->
                     url form
@@ -150,10 +159,10 @@ suite =
                                 >> (\elm ->
                                         value "123" elm
                                             |> Task.andThen (\_ -> attribute "value" elm)
-                                            |> Task.andThen (.value >> Expect.equal "123")
+                                            |> Task.andThen (.value >> Assert.equal "123")
                                             |> Task.andThen (\_ -> clear elm)
                                             |> Task.andThen (\_ -> attribute "value" elm)
-                                            |> Task.andThen (.value >> Expect.equal "")
+                                            |> Task.andThen (.value >> Assert.equal "")
                                    )
                             )
             , test "execute" <|
@@ -163,7 +172,9 @@ suite =
                         |> Task.andThen (\_ -> execute "return window.delme" [])
                         |> Task.andThen
                             (.value
-                                >> (Decode.decodeValue Decode.string >> Expect.equal (Ok "correct"))
+                                >> (Decode.decodeValue Decode.string
+                                        >> Assert.custom Debug.toString (Ok "correct")
+                                   )
                             )
             , test "executeAsync" <|
                 \{ url, execute, executeAsync } ->
@@ -187,7 +198,9 @@ suite =
                         |> Task.andThen (\_ -> execute "return window.delme" [])
                         |> Task.andThen
                             (.value
-                                >> (Decode.decodeValue Decode.string >> Expect.equal (Ok "correct"))
+                                >> (Decode.decodeValue Decode.string
+                                        >> Assert.custom Debug.toString (Ok "correct")
+                                   )
                             )
             , test "addCookie, cookie" <|
                 \{ url, addCookie, cookie } ->
@@ -195,7 +208,7 @@ suite =
                         |> Task.andThen (\_ -> addCookie "a" "1")
                         |> Task.andThen (\_ -> addCookie "b" "2")
                         |> Task.andThen (\_ -> cookie "a")
-                        |> Task.andThen (.value >> .value >> Expect.equal "1")
+                        |> Task.andThen (.value >> .value >> Assert.equal "1")
             , test "cookies" <|
                 \{ url, addCookie, cookies } ->
                     url hostForCookies
@@ -203,7 +216,7 @@ suite =
                         |> Task.andThen (\_ -> addCookie "b" "2")
                         |> Task.andThen (\_ -> addCookie "c" "2")
                         |> Task.andThen (\_ -> cookies)
-                        |> Task.andThen (.value >> List.length >> Expect.equal 3)
+                        |> Task.andThen (.value >> List.length >> Assert.equalInt 3)
             , test "deleteCookies" <|
                 \{ url, addCookie, deleteCookies, cookies } ->
                     url hostForCookies
@@ -212,7 +225,7 @@ suite =
                         |> Task.andThen (\_ -> addCookie "c" "2")
                         |> Task.andThen (\_ -> deleteCookies)
                         |> Task.andThen (\_ -> cookies)
-                        |> Task.andThen (.value >> List.length >> Expect.equal 0)
+                        |> Task.andThen (.value >> List.length >> Assert.equalInt 0)
             , test "deleteCookie" <|
                 \{ url, addCookie, deleteCookie, cookies } ->
                     url hostForCookies
@@ -221,7 +234,7 @@ suite =
                         |> Task.andThen (\_ -> addCookie "c" "2")
                         |> Task.andThen (\_ -> deleteCookie "b")
                         |> Task.andThen (\_ -> cookies)
-                        |> Task.andThen (.value >> List.length >> Expect.equal 2)
+                        |> Task.andThen (.value >> List.length >> Assert.equalInt 2)
             , test "promptText" <|
                 \{ url, promptText } ->
                     url promptMock
@@ -230,7 +243,7 @@ suite =
                 \{ url, alertText } ->
                     url alertMock
                         |> Task.andThen (\_ -> alertText)
-                        |> Task.andThen (.value >> Expect.equal "Hello World")
+                        |> Task.andThen (.value >> Assert.equal "Hello World")
             , test "alertDismiss" <|
                 \{ url, alertDismiss } -> url alertMock |> Task.andThen (\_ -> alertDismiss)
             , test "alertAccept" <|
@@ -258,15 +271,15 @@ suite =
                 \{ url, windowHandles } ->
                     url mock
                         |> Task.andThen (\_ -> windowHandles)
-                        |> Task.andThen (.value >> List.length >> Expect.atLeast 1)
+                        |> Task.andThen (.value >> List.length >> Assert.atLeast 1)
             , test "close" <|
                 \{ url, windowHandles, close } ->
                     url newWindow
                         |> Task.andThen (\_ -> windowHandles)
-                        |> Task.andThen (.value >> List.length >> Expect.equal 2)
+                        |> Task.andThen (.value >> List.length >> Assert.equalInt 2)
                         |> Task.andThen (\_ -> close)
                         |> Task.andThen (\_ -> windowHandles)
-                        |> Task.andThen (.value >> List.length >> Expect.equal 1)
+                        |> Task.andThen (.value >> List.length >> Assert.equalInt 1)
             , test "fullscreen" <|
                 \{ url, fullscreen } -> url mock |> Task.andThen (\_ -> fullscreen)
             , test "maximize" <|
@@ -277,17 +290,22 @@ suite =
                 \{ url, frameParent } -> url mock |> Task.andThen (\_ -> frameParent)
             , test "frame" <|
                 \{ url, frame } -> url mock |> Task.andThen (\_ -> frame Json.null)
+            , test "actions" <|
+                \{ url, actions } -> url mock |> Task.andThen (\_ -> Task.fail "not implemented")
+            , test "release" <|
+                \{ url, release } -> url mock |> Task.andThen (\_ -> Task.fail "not implemented")
             ]
-        , test "actions" <|
-            \{ url, actions } -> url mock |> Task.andThen (\_ -> Task.fail "not implemented")
-        , test "release" <|
-            \{ url, release } -> url mock |> Task.andThen (\_ -> Task.fail "not implemented")
         ]
 
 
 blankPage : String
 blankPage =
     "data:text/plain,Hello"
+
+
+blankPage2 : String
+blankPage2 =
+    "data:text/plain,Hello2"
 
 
 newWindow : String

@@ -63,7 +63,8 @@ before_script:
 script:
   # - elm-format --validate src/
   - cd tests
-  - elm make ./src/Main.elm --optimize --output=bundle.js
+  # - elm make ./src/Main.elm --optimize --output=bundle.js
+  - elm make ./src/Main.elm --debug --output=bundle.js
   - $RUN_DRIVER &
   - DRIVER_PID=$!
   - >

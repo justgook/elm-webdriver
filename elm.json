@@ -6,10 +6,9 @@
   "license": "BSD-3-Clause",
   "exposed-modules": [
     "WebDriver",
-    "WebDriver.Expect",
-    "WebDriver.Helper.Browser",
-    "WebDriver.Helper.Capabilities",
+    "WebDriver.Assert",
     "WebDriver.Runner",
+    "WebDriver.Runner.Helper",
     "WebDriver.Step",
     "WebDriver.Step.Element",
     "WebDriver.Step.Action"
