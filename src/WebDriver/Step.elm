@@ -13,47 +13,60 @@ module WebDriver.Step exposing
     , Functions, Host, WithSession, functions, sessionStart, sessionStop
     )
 
-{-| ##Location Navigation
+{-|
+
+
+## Location Navigation
 
 @docs url, getUrl
 
-##Elements
+
+## Elements
 
 @docs element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot
 
-##History Navigation
+
+## History Navigation
 
 @docs back, forward, refresh
 
-##Window
+
+## Window
 
 @docs title, windowHandle, windowHandles, window, getWindowRect, setWindowRect, fullscreen, maximize, minimize, close, screenshot
 
-#Alerts
+
+## Alerts
 
 @docs alertAccept, alertDismiss, alertText, promptText
 
-##Inject a snippet of JavaScript
+
+## Inject a snippet of JavaScript
 
 @docs execute, executeAsync
 
-##Frames / iFrames
+
+## Frames / iFrames
 
 @docs frameParent, frame
 
-##Timeouts
+
+## Timeouts
 
 @docs getTimeouts, setTimeouts
 
-##Cookies
+
+## Cookies
 
 @docs cookies, cookie, deleteCookies, deleteCookie, addCookie
 
-##Actions
+
+## Actions
 
 @docs actions, release
 
-##Webdriver Host info
+
+## Webdriver Host info
 
 @docs status
 

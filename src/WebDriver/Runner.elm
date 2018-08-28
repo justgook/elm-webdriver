@@ -1,4 +1,10 @@
-module WebDriver.Runner exposing (Browsers, Expectation, Status(..), allDone, prepare, prepareNext, runOne, updateDone)
+module WebDriver.Runner exposing (Browsers, Executable, Expectation, Status(..), allDone, prepare, prepareNext, runOne, updateDone)
+
+{-|
+
+@docs Browsers, Executable, Expectation, Status, allDone, prepare, prepareNext, runOne, updateDone
+
+-}
 
 import Array exposing (Array)
 import Json.Encode as Json
@@ -10,10 +16,14 @@ import WebDriver.Internal.Browser as WebDriver
 import WebDriver.Step exposing (Functions)
 
 
+{-| Alias for executable test
+-}
 type alias Executable =
     Functions -> Task Never (Result String ())
 
 
+{-| Execution Model for each [browser](Webdriver/#browser)
+-}
 type alias Browsers info =
     { onlyMode : Bool
     , tests :
@@ -21,11 +31,15 @@ type alias Browsers info =
     }
 
 
+{-| Result of test execution
+-}
 type alias Expectation =
     --Result { critical : Bool, error : String, capabilities : Json.Value } Json.Value
     WebDriver.Internal.Expectation
 
 
+{-| Test Status
+-}
 type Status
     = Pass Json.Value
     | Fail String Json.Value
@@ -34,6 +48,9 @@ type Status
     | Running
 
 
+{-| Validates is all tests done (no waiting or running left)
+-}
+allDone : ( NestedSet String, Browsers info ) -> Bool
 allDone (( desc, tests ) as model) =
     tests.tests
         |> Array.foldr
@@ -46,6 +63,8 @@ allDone (( desc, tests ) as model) =
         |> not
 
 
+{-| -}
+updateDone : Expectation -> Int -> Int -> ( NestedSet String, Browsers info ) -> ( NestedSet String, Browsers info )
 updateDone result =
     statusFromResult result |> updateStatus
 
@@ -74,6 +93,8 @@ getFirst validation =
     getFirst_ 0
 
 
+{-| -}
+prepareNext : Int -> ( NestedSet String, Browsers info ) -> Maybe ( ( NestedSet String, Browsers info ), { exec : Executable, info : info, testId : Int } )
 prepareNext queueId (( desc, tests ) as model) =
     tests.tests
         |> Array.get queueId
@@ -89,6 +110,8 @@ prepareNext queueId (( desc, tests ) as model) =
             )
 
 
+{-| -}
+updateStatus : Status -> Int -> Int -> ( NestedSet String, Browsers info ) -> ( NestedSet String, Browsers info )
 updateStatus status queueId testId ( desc, { onlyMode, tests } as data ) =
     ( desc
     , { data
@@ -157,6 +180,7 @@ statusFromResult r =
             Pass capabilities
 
 
+{-| -}
 prepare : info -> Test info -> Result String ( NestedSet String, Browsers info )
 prepare config suite =
     unwrap config suite
@@ -170,6 +194,7 @@ prepare config suite =
             )
 
 
+{-| -}
 runOne : String -> Json.Value -> (Functions -> Task Never (Result String ())) -> Task Never Expectation
 runOne url capabilities test =
     WebDriver.browser url capabilities test

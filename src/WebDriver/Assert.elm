@@ -15,6 +15,7 @@ import Task exposing (Task)
 
 {-| Checks if both values is same, and if not fails with fail function
 -}
+custom : (a -> String) -> a -> a -> Task String a
 custom f a b =
     if a == b then
         Task.succeed b
@@ -30,6 +31,8 @@ equal a b =
     custom (\_ -> verticalBar "Assert.equal" a b) a b
 
 
+{-| Passes if the arguments is same Int.
+-}
 equalInt : Int -> Int -> Task String Int
 equalInt a b =
     custom (\_ -> verticalBar "Assert.equalInt" (String.fromInt a) (String.fromInt b)) a b
@@ -37,18 +40,21 @@ equalInt a b =
 
 {-| Passes if the argument is 'True', and otherwise fails with the given message.
 -}
+true : String -> Bool -> Task String Bool
 true t =
     custom (always t) True
 
 
 {-| Passes if the argument is 'False', and otherwise fails with the given message.
 -}
+false : String -> Bool -> Task String Bool
 false t =
     custom (always t) False
 
 
 {-| Passes if the second argument is greater than or equal to the first.
 -}
+atLeast : Int -> Int -> Task String Int
 atLeast a b =
     if a <= b then
         Task.succeed b
@@ -60,6 +66,7 @@ atLeast a b =
 
 {-| Passes if the second argument is greater than the first.
 -}
+greaterThan : Int -> Int -> Task String Int
 greaterThan a b =
     if a < b then
         Task.succeed b
@@ -71,6 +78,7 @@ greaterThan a b =
 
 {-| Throws an Assertion Error
 -}
+fail : a -> e -> Task e b
 fail _ e =
     Task.fail e
 
