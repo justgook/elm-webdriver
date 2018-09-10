@@ -1,9 +1,14 @@
-module WebDriver.Step.Element exposing (Element, Selector, css, xPath)
+module WebDriver.Step.Element exposing
+    ( css, xPath
+    , Element, Selector
+    )
 
 {-| #Helper functions
+
 @docs css, xPath
 
 #Types
+
 @docs Element, Selector
 
 -}

@@ -7,8 +7,7 @@
   "exposed-modules": [
     "WebDriver",
     "WebDriver.Assert",
-    "WebDriver.Runner",
-    "WebDriver.Runner.Helper",
+    "WebDriver.Setup",
     "WebDriver.Step",
     "WebDriver.Step.Element",
     "WebDriver.Step.Action"

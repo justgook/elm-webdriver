@@ -1,6 +1,6 @@
 module WebDriver.Step exposing
     ( url, getUrl
-    , element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot
+    , element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot, source
     , back, forward, refresh
     , title, windowHandle, windowHandles, window, getWindowRect, setWindowRect, fullscreen, maximize, minimize, close, screenshot
     , alertAccept, alertDismiss, alertText, promptText
@@ -23,7 +23,7 @@ module WebDriver.Step exposing
 
 ## Elements
 
-@docs element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot
+@docs element, elements, click, clear, value, elementInElement, elementsInElement, selected, enabled, tagName, text, attribute, property, css, rect, elementScreenshot, source
 
 
 ## History Navigation
@@ -81,12 +81,13 @@ import Json.Decode exposing (Decoder)
 import Json.Encode as Json
 import Task exposing (Task)
 import WebDriver.Internal.HttpHelper as Http exposing (toTask)
-import WebDriver.Internal.Value as Value exposing (Answer, Cookie, Out, WindowHandle(..), answerDecoder, jsonFromSelector)
-import WebDriver.Internal.Value.Action as Action
+import WebDriver.Internal.Value as Value exposing (Answer, Cookie, Out, WindowHandle(..), answerDecoder, decodeAnswerWithSession, jsonFromSelector)
 import WebDriver.Internal.Value.Status as Status exposing (Status)
 import WebDriver.Internal.Value.Timeouts as Timeouts exposing (Timeouts)
-import WebDriver.Step.Action exposing (Action)
+import WebDriver.Step.Action as Action exposing (Action)
 import WebDriver.Step.Element exposing (Element, Selector)
+import WebDriver.Step.Internal exposing (execute_)
+import WebDriver.Step.Selenium as Selenium
 
 
 type alias Step data =
@@ -107,7 +108,7 @@ type alias Host =
 used in most of step functins
 -}
 type alias WithSession =
-    { sessionId : String, url : String }
+    Value.WithSession
 
 
 {-| Functions that is passed to [tests](../WebDriver#test), with already created session
@@ -128,23 +129,24 @@ type alias Functions =
     , window : WindowHandle -> Step ()
     , fullscreen : Step ()
     , maximize : Step ()
-    , minimize : Step { height : Int, width : Int, x : Int, y : Int }
+    , minimize : Step { height : Float, width : Float, x : Float, y : Float }
     , frameParent : Step ()
     , frame : Json.Value -> Step ()
+    , source : Step String
     , element : Selector -> Step Element
     , elements : Selector -> Step (List Element)
     , attribute : String -> Element -> Step String
     , css : String -> Element -> Step String
     , enabled : Element -> Step Bool
     , property : String -> Element -> Step String
-    , rect : Element -> Step { height : Int, width : Int, x : Int, y : Int }
+    , rect : Element -> Step { height : Float, width : Float, x : Float, y : Float }
     , selected : Element -> Step Bool
     , tagName : Element -> Step String
     , text : Element -> Step String
     , elementInElement : Selector -> Element -> Step Element
     , elementsInElement : Selector -> Element -> Step (List Element)
-    , getWindowRect : Step { height : Int, width : Int, x : Int, y : Int }
-    , setWindowRect : { height : Int, width : Int, x : Int, y : Int } -> Step { height : Int, width : Int, x : Int, y : Int }
+    , getWindowRect : Step { height : Float, width : Float, x : Float, y : Float }
+    , setWindowRect : { height : Float, width : Float, x : Float, y : Float } -> Step { height : Float, width : Float, x : Float, y : Float }
     , clear : Element -> Step ()
     , click : Element -> Step ()
     , value : String -> Element -> Step ()
@@ -163,6 +165,10 @@ type alias Functions =
     , screenshot : Step String
     , actions : List Action -> Step ()
     , release : Step ()
+    , selenium :
+        { execute : String -> List Json.Value -> Step Json.Value
+        , executeAsync : String -> List Json.Value -> Step Json.Value
+        }
     }
 
 
@@ -187,6 +193,7 @@ functions options =
     , minimize = minimize options |> toTask
     , frameParent = frameParent options |> toTask
     , frame = \data -> frame options data |> toTask
+    , source = source options |> toTask
     , element = \data -> element options data |> toTask
     , elements = \data -> elements options data |> toTask
     , selected = \data -> selected options data |> toTask
@@ -205,7 +212,7 @@ functions options =
     , value = \string elm -> value options string elm |> toTask
     , clear = \elm -> clear options elm |> toTask
     , execute = \script args -> execute options script args |> toTask
-    , executeAsync = \script args -> execute options script args |> toTask
+    , executeAsync = \script args -> executeAsync options script args |> toTask
     , cookies = cookies options |> toTask
     , cookie = \name -> cookie options name |> toTask
     , deleteCookies = deleteCookies options |> toTask
@@ -219,6 +226,10 @@ functions options =
     , elementScreenshot = \elm -> elementScreenshot options elm |> toTask
     , actions = \data -> actions options data |> toTask
     , release = release options |> toTask
+    , selenium =
+        { execute = \script args -> Selenium.execute options script args |> toTask
+        , executeAsync = \script args -> Selenium.executeAsync options script args |> toTask
+        }
     }
 
 
@@ -228,12 +239,12 @@ and task result in info of created session as Json.Value
 > Note: Most of cases you don't need it runner will create session for you and stop, after test is done
 
 -}
-sessionStart : Host -> Json.Value -> Out Json.Value
+sessionStart : Host -> Json.Value -> Http.Request { sessionId : String, value : Json.Value }
 sessionStart settings capabilities =
     capabilities
         |> Http.jsonBody
         |> (\body ->
-                Http.post (settings.url ++ "/session") body answerDecoder.value
+                Http.post (settings.url ++ "/session") body (decodeAnswerWithSession Json.Decode.value)
            )
 
 
@@ -314,7 +325,7 @@ getUrl settings =
 history_ : String -> WithSession -> Http.Request (Answer ())
 history_ path settings =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/" ++ path)
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         answerDecoder.empty
 
 
@@ -390,7 +401,7 @@ window settings (Handle handle) =
 window_ : String -> Decoder a -> { b | sessionId : String, url : String } -> Http.Request a
 window_ path decoder settings =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/window/" ++ path)
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         decoder
 
 
@@ -421,7 +432,7 @@ maximize =
 if any, on the window containing the current top-level browsing context.
 This typically hides the window in the system tray.
 -}
-minimize : WithSession -> Out { height : Int, width : Int, x : Int, y : Int }
+minimize : WithSession -> Out { height : Float, width : Float, x : Float, y : Float }
 minimize =
     window_ "minimize" answerDecoder.decodeRect
 
@@ -430,7 +441,7 @@ minimize =
 on the screen of the operating system window corresponding
 to the current top-level browsing context.
 -}
-getWindowRect : WithSession -> Out { height : Int, width : Int, x : Int, y : Int }
+getWindowRect : WithSession -> Out { height : Float, width : Float, x : Float, y : Float }
 getWindowRect settings =
     Http.get (settings.url ++ "/session/" ++ settings.sessionId ++ "/window/rect")
         answerDecoder.decodeRect
@@ -440,15 +451,15 @@ getWindowRect settings =
 of the operating system window corresponding
 to the current top-level browsing context.
 -}
-setWindowRect : WithSession -> { height : Int, width : Int, x : Int, y : Int } -> Out { height : Int, width : Int, x : Int, y : Int }
+setWindowRect : WithSession -> { height : Float, width : Float, x : Float, y : Float } -> Out { height : Float, width : Float, x : Float, y : Float }
 setWindowRect settings { height, width, x, y } =
     Http.post
         (settings.url ++ "/session/" ++ settings.sessionId ++ "/window/rect")
         (Json.object
-            [ ( "height", Json.int height )
-            , ( "width", Json.int width )
-            , ( "x", Json.int x )
-            , ( "y", Json.int y )
+            [ ( "height", Json.float height )
+            , ( "width", Json.float width )
+            , ( "x", Json.float x )
+            , ( "y", Json.float y )
             ]
             |> Http.jsonBody
         )
@@ -585,7 +596,7 @@ The returned value is a record with `x`, `y`, `width` and `height` properties.
 > and might not be working with current Selenium driver.
 
 -}
-rect : WithSession -> Element -> Out { height : Int, width : Int, x : Int, y : Int }
+rect : WithSession -> Element -> Out { height : Float, width : Float, x : Float, y : Float }
 rect settings elem =
     requestElemntProp_ "rect" answerDecoder.decodeRect settings elem
 
@@ -611,7 +622,7 @@ Other input way (touch events, mouse up/down ...) can be done by [`actions`](#ac
 click : WithSession -> Element -> Out ()
 click settings (Value.Element elem) =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/click")
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         answerDecoder.empty
 
 
@@ -620,7 +631,7 @@ click settings (Value.Element elem) =
 clear : WithSession -> Element -> Out ()
 clear settings (Value.Element elem) =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/element/" ++ elem ++ "/clear")
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         answerDecoder.empty
 
 
@@ -649,7 +660,7 @@ the context remains unchanged.
 frameParent : WithSession -> Out ()
 frameParent settings =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/frame/parent")
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         answerDecoder.empty
 
 
@@ -700,19 +711,8 @@ Arguments may be any JSON-primitive, array, or JSON object.
 
 -}
 execute : WithSession -> String -> List Json.Value -> Out Json.Value
-execute settings function args =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/execute/sync")
-        (Json.object
-            [ ( "script"
-              , Json.string function
-              )
-            , ( "args"
-              , Json.list identity args
-              )
-            ]
-            |> Http.jsonBody
-        )
-        answerDecoder.value
+execute =
+    execute_ "/execute/sync"
 
 
 {-| Inject a snippet of JavaScript into the page for execution in the context of the currently selected frame.
@@ -746,19 +746,8 @@ Arguments may be any JSON-primitive, array, or JSON object.
 
 -}
 executeAsync : WithSession -> String -> List Json.Value -> Out Json.Value
-executeAsync settings function args =
-    Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/execute/async")
-        (Json.object
-            [ ( "script"
-              , Json.string function
-              )
-            , ( "args"
-              , Json.list identity args
-              )
-            ]
-            |> Http.jsonBody
-        )
-        answerDecoder.value
+executeAsync =
+    execute_ "/execute/async"
 
 
 
@@ -825,7 +814,7 @@ addCookie settings name data_ =
 alertAccept : WithSession -> Out ()
 alertAccept settings =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/alert/accept")
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         answerDecoder.empty
 
 
@@ -834,7 +823,7 @@ alertAccept settings =
 alertDismiss : WithSession -> Out ()
 alertDismiss settings =
     Http.post (settings.url ++ "/session/" ++ settings.sessionId ++ "/alert/dismiss")
-        Http.emptyBody
+        (Json.object [] |> Http.jsonBody)
         answerDecoder.empty
 
 

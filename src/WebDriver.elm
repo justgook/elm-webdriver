@@ -1,10 +1,12 @@
-module WebDriver exposing (Test, test, describe, skip, only, concat)
+module WebDriver exposing (Test, test, describe, skip, only, browsers, concat)
 
 {-|
 
-@docs Test, test, describe, skip, only, concat
+@docs Test, test, describe, skip, only, browsers, concat
 
 -}
+
+-- https://github.com/jlipps/simple-wd-spec
 
 import Set
 import Task exposing (Task)
@@ -20,6 +22,13 @@ See [`test`](#test) for some ways to create a `Test`.
 -}
 type alias Test browserInfo =
     Internal.Test browserInfo
+
+
+{-| Test wrapper that run tests inside in all discribed
+-}
+browsers : List browserInfo -> Test browserInfo -> Test browserInfo
+browsers list item =
+    Internal.Browser list item
 
 
 {-| Run each of the given tests.

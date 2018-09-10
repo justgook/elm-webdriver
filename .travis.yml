@@ -2,38 +2,33 @@ sudo: required
 addons:
   chrome: stable
 
+services:
+  - docker
+
 language: node
 
 cache:
   directories:
     - tests/elm-stuff
     - tests/node_modules
+    - tests/stats.json
 
 matrix:
     include:
+        ### CHROME DRIVER ###
         - os: linux
           env: |
-            ELM_VERSION=0.19.0
+            ELM_VERSION=latest
             TARGET_NODE_VERSION=node
-            ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-linux.tar.gz
-            RUN_DRIVER=chromedriver
-          before_script: |
-            CHROMEDRIVER_PLATFORM=linux64
-            VERSION=$(curl http://chromedriver.storage.googleapis.com/LATEST_RELEASE) &&
-            curl -L http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_$CHROMEDRIVER_PLATFORM.zip | jar -x &&
-            chmod +x chromedriver
+            DRIVER_NAME="Chrome Linux"
 
         - os: osx
           env: |
-            ELM_VERSION=0.19.0
+            ELM_VERSION=latest
             TARGET_NODE_VERSION=node
-            ELM_BINARY=https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-mac.tar.gz
-            RUN_DRIVER=chromedriver
-          before_script: |
-            CHROMEDRIVER_PLATFORM=mac64
-            VERSION=$(curl http://chromedriver.storage.googleapis.com/LATEST_RELEASE) &&
-            curl -L http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_$CHROMEDRIVER_PLATFORM.zip | jar -x &&
-            chmod +x chromedriver
+            DRIVER_NAME="Chrome OSX"
+
+
 
 before_install:
   - curl -o- -L https://yarnpkg.com/install.sh | bash
@@ -43,33 +38,19 @@ before_install:
 install:
   - nvm install $TARGET_NODE_VERSION
   - nvm use $TARGET_NODE_VERSION
+  - yarn install -g elm@$ELM_VERSION
   - node --version
   - npm --version
   - yarn --version
-  - ./elm --version
+  - elm --version
   - export PATH=$PATH:$PWD
   - yarn --cwd tests
 
-  # - npm install -g elm@$ELM_VERSION
-  # - npm install -g elm-test@beta
-
-before_script:
-  - |
-    CHROMEDRIVER_PLATFORM=mac64
-    VERSION=$(curl http://chromedriver.storage.googleapis.com/LATEST_RELEASE) &&
-    curl -L http://chromedriver.storage.googleapis.com/$VERSION/chromedriver_$CHROMEDRIVER_PLATFORM.zip | jar -x &&
-    chmod +x chromedriver
+before_script: |
+  curl -s https://aerokube.com/cm/bash | bash && ./cm selenoid start --vnc --tmpfs 128
 
 script:
   # - elm-format --validate src/
   - cd tests
-  # - elm make ./src/Main.elm --optimize --output=bundle.js
-  - elm make ./src/Main.elm --debug --output=bundle.js
-  - $RUN_DRIVER &
-  - DRIVER_PID=$!
-  - >
-    node -e 'const XMLHttpRequest = require("xhr2");
-    const app = require("./bundle.js").Elm.Main.init({});
-    app.ports.log.subscribe((a)=>process.stdout.write(a));
-    app.ports.result.subscribe( ({errors}) => { process.exitCode = errors.length > 7 ? 1 : 0;});'
-  - kill -KILL $DRIVER_PID
+  - elm make ./src/Main.elm --optimize --output=bundle.js
+  - node ./ci.js

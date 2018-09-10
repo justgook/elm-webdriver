@@ -1,4 +1,17 @@
-module WebDriver.Internal.Value exposing (Answer, AnswerDecoder, Cookie, Element(..), Out, Selector(..), WindowHandle(..), answerDecoder, decodeAnswer, jsonFromSelector)
+module WebDriver.Internal.Value exposing
+    ( Answer
+    , AnswerDecoder
+    , Cookie
+    , Element(..)
+    , Out
+    , Selector(..)
+    , WindowHandle(..)
+    , WithSession
+    , answerDecoder
+    , decodeAnswer
+    , decodeAnswerWithSession
+    , jsonFromSelector
+    )
 
 {-| -}
 
@@ -7,6 +20,10 @@ import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Json
 import WebDriver.Internal.Value.Status as Status exposing (Status)
 import WebDriver.Internal.Value.Timeouts as Timeouts exposing (Timeouts)
+
+
+type alias WithSession =
+    { sessionId : String, url : String }
 
 
 type alias Out value =
@@ -19,14 +36,18 @@ type WindowHandle
 
 
 type alias Answer value =
-    { status : Int
-    , sessionId : String
+    { value : value
+    }
+
+
+type alias AnswerWithSession value =
+    { sessionId : String
     , value : value
     }
 
 
 type alias AnswerDecoder value =
-    Decode.Decoder (Answer value)
+    Decoder (Answer value)
 
 
 type Selector
@@ -79,7 +100,7 @@ answerDecoder :
     , empty : AnswerDecoder ()
     , windowHandle : AnswerDecoder WindowHandle
     , windowHandles : AnswerDecoder (List WindowHandle)
-    , decodeRect : AnswerDecoder { height : Int, width : Int, x : Int, y : Int }
+    , decodeRect : AnswerDecoder { height : Float, width : Float, x : Float, y : Float }
     , cookie : AnswerDecoder Cookie
     , cookies : AnswerDecoder (List Cookie)
     }
@@ -90,7 +111,7 @@ answerDecoder =
     , elements = decodeElement |> Decode.map Element |> Decode.list |> decodeAnswer
     , getTimeouts = Timeouts.decode |> decodeAnswer
     , setTimeouts = Timeouts.decode |> decodeAnswer
-    , empty = Decode.null () |> decodeAnswer
+    , empty = Decode.oneOf [ Decode.null (), decodeEmptyObject ] |> decodeAnswer
     , string = Decode.string |> decodeAnswer
     , listSring = Decode.string |> Decode.list |> decodeAnswer
     , bool = Decode.bool |> decodeAnswer
@@ -113,6 +134,16 @@ type alias Cookie =
     }
 
 
+decodeEmptyObject : Decoder ()
+decodeEmptyObject =
+    Decode.keyValuePairs (Decode.null ())
+        |> Decode.andThen
+            (List.head
+                >> Maybe.map (\_ -> Decode.fail "Expected to to get empty Object")
+                >> Maybe.withDefault (Decode.succeed ())
+            )
+
+
 decodeCookies : Decoder (List Cookie)
 decodeCookies =
     Decode.list decodeCookie
@@ -130,7 +161,7 @@ decodeCookie =
         (Decode.maybe (Decode.field "secure" Decode.bool))
 
 
-rect : Int -> Int -> Int -> Int -> { height : Int, width : Int, x : Int, y : Int }
+rect : Float -> Float -> Float -> Float -> { height : Float, width : Float, x : Float, y : Float }
 rect a b c d =
     { height = a
     , width = b
@@ -139,21 +170,72 @@ rect a b c d =
     }
 
 
-decodeRect : Decoder { height : Int, width : Int, x : Int, y : Int }
+decodeRect : Decoder { height : Float, width : Float, x : Float, y : Float }
 decodeRect =
     Decode.map4 rect
-        (Decode.field "height" Decode.int)
-        (Decode.field "width" Decode.int)
-        (Decode.field "x" Decode.int)
-        (Decode.field "y" Decode.int)
+        (Decode.field "height" Decode.float)
+        (Decode.field "width" Decode.float)
+        (Decode.field "x" Decode.float)
+        (Decode.field "y" Decode.float)
 
 
 decodeElement : Decoder String
 decodeElement =
-    Decode.field "ELEMENT" Decode.string
+    Decode.keyValuePairs Decode.string
+        |> Decode.andThen
+            (List.head
+                >> Maybe.map (Tuple.second >> Decode.succeed)
+                >> Maybe.withDefault (Decode.fail "Cannot get value for element")
+            )
 
 
-decodeAnswer : Decode.Decoder a -> Decode.Decoder { sessionId : String, status : Int, value : a }
+decodeAnswerWithSession : Decode.Decoder value -> Decoder (AnswerWithSession value)
+decodeAnswerWithSession decodeValue =
+    let
+        statusDecode =
+            Decode.int
+
+        sessionId =
+            Decode.oneOf [ Decode.string, Decode.null "" ]
+
+        chrome =
+            Decode.field "status" statusDecode
+                |> Decode.andThen
+                    (\status ->
+                        case status of
+                            0 ->
+                                Decode.map2
+                                    (\sessionId_ value ->
+                                        { sessionId = sessionId_
+                                        , value = value
+                                        }
+                                    )
+                                    (Decode.field "sessionId" sessionId)
+                                    (Decode.field "value" decodeValue)
+
+                            _ ->
+                                Decode.andThen Decode.fail decodeError
+                    )
+
+        firefox =
+            Decode.map2
+                (\sessionId_ value ->
+                    { sessionId = sessionId_
+                    , value = value
+                    }
+                )
+                (Decode.at [ "value", "sessionId" ] sessionId)
+                (Decode.oneOf
+                    [ Decode.at [ "value", "capabilities" ] decodeValue
+                    , Decode.field "value" decodeValue
+                    ]
+                )
+    in
+    Decode.oneOf [ chrome, firefox ]
+        |> reduceErrors
+
+
+decodeAnswer : Decode.Decoder value -> Decoder (Answer value)
 decodeAnswer decodeValue =
     let
         statusDecode =
@@ -161,27 +243,49 @@ decodeAnswer decodeValue =
 
         sessionId =
             Decode.oneOf [ Decode.string, Decode.null "" ]
-    in
-    Decode.field "status" statusDecode
-        |> Decode.andThen
-            (\status ->
-                case status of
-                    0 ->
-                        Decode.map2
-                            (\sessionId_ value ->
-                                { sessionId = sessionId_
-                                , status = status
-                                , value = value
-                                }
-                            )
-                            (Decode.field "sessionId" sessionId)
-                            (Decode.field "value" decodeValue)
 
-                    _ ->
-                        Decode.andThen Decode.fail decodeError
-            )
+        chrome =
+            Decode.field "status" statusDecode
+                |> Decode.andThen
+                    (\status ->
+                        case status of
+                            0 ->
+                                Decode.map
+                                    (\value ->
+                                        { value = value
+                                        }
+                                    )
+                                    (Decode.field "value" decodeValue)
+
+                            _ ->
+                                Decode.andThen Decode.fail decodeError
+                    )
+
+        firefox =
+            Decode.map (\value -> { value = value })
+                (Decode.oneOf
+                    [ Decode.at [ "value", "capabilities" ] decodeValue
+                    , Decode.field "value" decodeValue
+                    ]
+                )
+    in
+    Decode.oneOf [ chrome, firefox ]
+        |> reduceErrors
 
 
 decodeError : Decode.Decoder String
 decodeError =
     Decode.at [ "value", "message" ] Decode.string
+
+
+reduceErrors =
+    Decode.maybe
+        >> Decode.andThen
+            (\a ->
+                case a of
+                    Just result ->
+                        Decode.succeed result
+
+                    Nothing ->
+                        Decode.andThen Decode.fail decodeError
+            )
