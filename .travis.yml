@@ -2,9 +2,6 @@ sudo: required
 addons:
   chrome: stable
 
-services:
-  - docker
-
 language: node
 
 cache:
@@ -12,6 +9,7 @@ cache:
     - tests/elm-stuff
     - tests/node_modules
     - tests/stats.json
+    - $HOME/.aerokube
 
 matrix:
     include:
@@ -21,6 +19,8 @@ matrix:
             ELM_VERSION=latest
             TARGET_NODE_VERSION=node
             DRIVER_NAME="Chrome Linux"
+          services:
+            - docker
 
         - os: osx
           env: |
@@ -33,11 +33,11 @@ matrix:
 before_install:
   - curl -o- -L https://yarnpkg.com/install.sh | bash
   - export PATH="$HOME/.yarn/bin:$PATH"
-  - yarn --cwd tests
-
-install:
   - nvm install $TARGET_NODE_VERSION
   - nvm use $TARGET_NODE_VERSION
+
+install:
+  - yarn --cwd tests
   - yarn global add elm@$ELM_VERSION
   - node --version
   - npm --version
