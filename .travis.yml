@@ -47,7 +47,8 @@ install:
   - yarn --version
   - elm --version
   - export PATH=$PATH:$PWD
-  - if ! [ -f ./cm ]; then curl -s https://aerokube.com/cm/bash | bash; fi
+  # - if ! [ -f ./cm ]; then curl -s https://aerokube.com/cm/bash | bash; fi
+  - curl -s https://aerokube.com/cm/bash | bash;
   - ./cm selenoid start --vnc --tmpfs 128
 
 
