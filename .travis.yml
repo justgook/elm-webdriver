@@ -1,6 +1,4 @@
 sudo: required
-addons:
-  chrome: stable
 
 language: node
 
@@ -10,6 +8,7 @@ cache:
     - tests/node_modules
     - tests/stats.json
     - $HOME/.aerokube
+    - $HOME/.cm
 
 matrix:
     include:
@@ -19,6 +18,7 @@ matrix:
             ELM_VERSION=latest
             TARGET_NODE_VERSION=node
             DRIVER_NAME="Chrome Linux"
+            ELM_HOME=$HOME/.elm-linux
           services:
             - docker
 
@@ -27,6 +27,9 @@ matrix:
             ELM_VERSION=latest
             TARGET_NODE_VERSION=node
             DRIVER_NAME="Chrome OSX"
+            ELM_HOME=$HOME/.elm-osx
+          addons:
+            chrome: stable
 
 
 
@@ -44,10 +47,9 @@ install:
   - yarn --version
   - elm --version
   - export PATH=$PATH:$PWD
+  - if ! [ -f ./cm ]; then curl -s https://aerokube.com/cm/bash | bash; fi
+  - ./cm selenoid start --vnc --tmpfs 128
 
-
-before_script: |
-  curl -s https://aerokube.com/cm/bash | bash && ./cm selenoid start --vnc --tmpfs 128
 
 script:
   # - elm-format --validate src/
