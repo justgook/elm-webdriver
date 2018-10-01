@@ -6,7 +6,7 @@ import Platform exposing (worker)
 import Task
 import Test.All
 import Util
-import WebDriver.Setup as WebDriver exposing (Next, Reference, Report, Return, Status(..), SuiteState, Validator, next, setup)
+import WebDriver.Setup as WebDriver exposing (Next, Reference, Report, Status(..), SuiteState, Validator, next, setup)
 
 
 type alias Config =
